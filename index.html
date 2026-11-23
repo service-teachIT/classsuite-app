@@ -987,7 +987,7 @@
           lastDate = it.date;
         }
         html += `
-        <div class="outlook-item" onclick="openSheet('${esc(classRootPath)}', '${esc(topicFullPath)}')">
+        <div class="outlook-item" onclick="openTopicPicker('${esc(classRootPath)}')">
           <div class="out-time">
             <div class="out-period">${esc(it.period)}. Std</div>
             <div class="out-clock">${esc(it.start || '')}</div>
