@@ -164,7 +164,9 @@
     .out-period { font-weight: 800; font-size: 13px; }
     .out-clock { font-size: 10.5px; color: var(--muted); }
     .out-body { flex: 1; min-width: 0; }
+    .out-head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .out-class { font-weight: 800; font-size: 14.5px; color: #1D4ED8; }
+    .out-room { font-size: 12px; font-weight: 600; color: #94A3B8; white-space: nowrap; flex-shrink: 0; }
     .out-topic { font-size: 14px; color: #0F172A; margin-top: 2px; font-weight: 500; }
 
     nav {
@@ -1148,7 +1150,10 @@
             <div class="out-clock">${esc(it.start || '')}</div>
           </div>
           <div class="out-body">
-            <div class="out-class">${esc(it.class)}${it.room ? ` (${esc(it.room)})` : ''}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+            <div class="out-head-row">
+              <div class="out-class">${esc(it.class)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+              ${it.room ? `<div class="out-room">${esc(it.room)}</div>` : ''}
+            </div>
             <div class="out-topic">${esc(displayTopic)}</div>
             ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
           </div>
