@@ -208,21 +208,27 @@
       -webkit-overflow-scrolling: touch;
     }
     .picker-row {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      padding: 12px 13px; border-radius: 12px; border: 1px solid var(--border);
-      background: #FFFFFF; cursor: pointer; text-align: left; width: 100%;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 10px 11px; border-radius: 12px; border: 1px solid var(--border);
+      background: #FFFFFF; text-align: left; width: 100%;
       transition: background 0.12s, border-color 0.12s;
     }
-    .picker-row:active { transform: scale(0.99); }
     .picker-row.is-red { background: #FEF2F2; border-color: #FCA5A5; }
     .picker-row.is-turq { background: #ECFEFF; border-color: #67E8F9; }
+    .picker-row-main { min-width: 0; flex: 1; cursor: pointer; padding: 2px 0; }
     .picker-row-name { font-size: 14.5px; line-height: 1.3; word-break: break-word; }
-    .picker-row-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-    .picker-badge {
-      font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+    .picker-row-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .picker-pick-btn {
+      border: 1px solid var(--border); background: #F8FAFC;
+      border-radius: 10px; min-width: 38px; height: 36px; padding: 0 9px;
+      font-size: 15px; font-weight: 800; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
     }
-    .picker-badge.red { background: #DC2626; color: #FFFFFF; }
-    .picker-badge.turq { background: #0E7490; color: #FFFFFF; }
+    .picker-pick-btn:active { transform: scale(0.94); }
+    .picker-pick-btn.btn-red { background: #FEF2F2; border-color: #FCA5A5; color: #B91C1C; }
+    .picker-pick-btn.btn-red.active { background: #DC2626; border-color: #DC2626; color: #FFFFFF; }
+    .picker-pick-btn.btn-turq { background: #ECFEFF; border-color: #67E8F9; color: #0E7490; }
+    .picker-pick-btn.btn-turq.active { background: #0891B2; border-color: #0891B2; color: #FFFFFF; }
   </style>
 </head>
 <body>
@@ -269,7 +275,7 @@
       <div class="picker-head">
         <div>
           <div id="pickerTitle" class="picker-title"></div>
-          <div class="picker-sub">Tippe auf die Stunde, die als Nächstes (🔴 Rot) ansteht</div>
+          <div class="picker-sub">Wähle 🔴 Rot (Nächste) oder 🔵 Türkis (noch nicht fertig)</div>
         </div>
         <button class="picker-close" onclick="closeTopicPicker()" title="Schließen">✕</button>
       </div>
@@ -762,32 +768,34 @@
         const m = getTopicMark(t.full_path);
         const note = getTopicNote(t.full_path);
         const rowCls = m === 'red' ? 'is-red' : (m === 'darkturquoise' ? 'is-turq' : '');
-        const badge = m === 'red'
-          ? '<span class="picker-badge red">🔴 Nächste</span>'
-          : (m === 'darkturquoise' ? '<span class="picker-badge turq">🔵 Fertig</span>' : '');
+        const pTopic = esc(t.full_path);
         html += `
-          <button class="picker-row ${rowCls}" onclick="pickNextTopic('${pCls}', '${esc(t.full_path)}')">
-            <div style="min-width:0; flex:1;">
+          <div class="picker-row ${rowCls}">
+            <div class="picker-row-main" onclick="pickTopicMark('${pCls}', '${pTopic}', 'red')">
               <div class="picker-row-name ${computeColorClass(t)}">${esc(t.name)}</div>
+              ${t.date_suffix ? `<div class="topic-date" style="margin-top:2px;">${esc(t.date_suffix)}</div>` : ''}
               ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
             </div>
-            <div class="picker-row-meta">
-              ${badge}
-              ${t.date_suffix ? `<span class="topic-date">${esc(t.date_suffix)}</span>` : ''}
+            <div class="picker-row-actions">
+              <button class="picker-pick-btn btn-red ${m === 'red' ? 'active' : ''}" onclick="event.stopPropagation(); pickTopicMark('${pCls}', '${pTopic}', 'red')" title="Rot (Nächste Stunde)">🔴</button>
+              <button class="picker-pick-btn btn-turq ${m === 'darkturquoise' ? 'active' : ''}" onclick="event.stopPropagation(); pickTopicMark('${pCls}', '${pTopic}', 'darkturquoise')" title="Türkis (noch nicht fertig)">🔵</button>
             </div>
-          </button>`;
+          </div>`;
       }
       listEl.innerHTML = html || `<div style="text-align:center; color:#64748B; padding:20px;">Kein Treffer für „${esc(q)}“.</div>`;
     }
 
-    async function pickNextTopic(classPath, topicPath) {
+    async function pickTopicMark(classPath, topicPath, color) {
       const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
       const topic = cls?.topics.find(t => normKey(t.full_path) === normKey(topicPath));
       closeTopicPicker();
       if (!cls || !topic) return;
-      setMarkLocal(cls.path, topic.full_path, 'red');
-      showToast(`🔴 ${cls.name} → ${topic.name}`);
-      await pushMarksOrQueue({ endpoint: '/api/mark', body: { class_path: cls.path, topic_path: topic.full_path, color: 'red' } });
+      if (getTopicMark(topic.full_path) !== color) {
+        setMarkLocal(cls.path, topic.full_path, color);
+      }
+      const icon = color === 'darkturquoise' ? '🔵' : '🔴';
+      showToast(`${icon} ${cls.name} → ${topic.name}`);
+      await pushMarksOrQueue({ endpoint: '/api/mark', body: { class_path: cls.path, topic_path: topic.full_path, color } });
     }
 
     async function sheetMark(color) {
