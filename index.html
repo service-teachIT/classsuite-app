@@ -860,16 +860,12 @@
     }
 
     function renderClassesGrid(root) {
-      let html = `<input class="search-box" type="search" placeholder="🔍 Klasse oder Thema suchen…" value="${esc(searchQuery)}" oninput="searchQuery=this.value; render();" />`;
-      const q = searchQuery.trim().toLowerCase();
+      let html = '';
 
       for (const cls of snap.classes) {
-        if (q && !cls.name.toLowerCase().includes(q) && !cls.topics.some(t => t.name.toLowerCase().includes(q))) continue;
         const curTopic = cls.topics.find(t => ['red', 'darkturquoise'].includes(getTopicMark(t.full_path)))
           || cls.topics.find(t => t.is_next) || cls.topics[0];
-        const m = curTopic ? getTopicMark(curTopic.full_path) : null;
         const note = curTopic ? getTopicNote(curTopic.full_path) : '';
-        const curStatus = m === 'darkturquoise' ? '🔵 Fertig (Türkis)' : (m === 'red' ? '🔴 Nächste Stunde (Rot)' : 'Nächster Ordner');
         const curColor = curTopic ? computeColorClass(curTopic) : 'c-grey';
         const pEsc = esc(cls.path);
 
@@ -883,7 +879,7 @@
             <span style="color:#64748B; font-size:13px; font-weight:600;">Alle Themen ›</span>
           </div>
           <div class="current-topic-box" onclick="openClassDetail('${pEsc}')">
-            <div class="current-label">${curStatus}${curTopic && curTopic.date_suffix ? '  •  ' + esc(curTopic.date_suffix) : ''}</div>
+            ${curTopic && curTopic.date_suffix ? `<div class="current-label">${esc(curTopic.date_suffix)}</div>` : ''}
             <div class="current-name ${curColor}">${esc(curTopic ? curTopic.name : 'Keine Ordner')}</div>
             ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
           </div>
