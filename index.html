@@ -74,8 +74,8 @@
     .current-name { font-size: 15.5px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 
     .head-pick-btn {
-      border: 1px solid #93C5FD; background: #EFF6FF; color: #1D4ED8;
-      border-radius: 9px; padding: 5px 10px; font-size: 12.5px; font-weight: 700;
+      border: 1px solid #E2E8F0; background: #F1F5F9; color: #64748B;
+      border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 600;
       cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
     }
     .head-pick-btn:active { transform: scale(0.96); }
@@ -757,14 +757,96 @@
       return 'c-' + base;
     }
 
+    const WD_NAMES_JS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+    const WD_ABBR_JS  = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+    function formatDateShortJS(d) {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      return `${WD_ABBR_JS[d.getDay()]} ${dd}.${mm}.`;
+    }
+
+    function parseHHMMToMin(s) {
+      if (!s || !/^\d{1,2}:\d{2}$/.test(String(s).trim())) return null;
+      const [h, m] = String(s).trim().split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function buildLiveSuffixMap(cls) {
+      const map = new Map();
+      if (!cls || !cls.topics || !cls.topics.length) return map;
+      const startIdx = getLiveStartIndex(cls);
+      const needed = cls.topics.length - startIdx;
+      if (needed <= 0) return map;
+
+      const now = new Date();
+      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const bell = snap?.bell_schedule || {};
+      const clsKey = normKey(cls.path);
+      const clsNameLow = String(cls.name || '').trim().toLowerCase();
+
+      const occDates = [];
+      let lastOutlookIso = null;
+
+      for (const it of (snap?.outlook || [])) {
+        const match = (it.class_root_path && normKey(it.class_root_path) === clsKey)
+          || String(it.class || '').trim().toLowerCase() === clsNameLow;
+        if (!match || !it.date) continue;
+        if (it.date < todayIso) continue;
+        if (it.date === todayIso) {
+          const stMin = parseHHMMToMin(it.start || bell[String(it.period)]?.start);
+          if (stMin !== null && stMin <= nowMin) continue;
+        }
+        occDates.push(new Date(it.date + 'T00:00:00'));
+        lastOutlookIso = it.date;
+        if (occDates.length >= needed) break;
+      }
+
+      const sched = cls.schedule || {};
+      if (occDates.length < needed && Object.keys(sched).length > 0) {
+        let day;
+        if (lastOutlookIso) {
+          day = new Date(lastOutlookIso + 'T00:00:00');
+          day.setDate(day.getDate() + 1);
+        } else {
+          day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        }
+        for (let step = 0; step < 500 && occDates.length < needed; step++) {
+          const wdName = WD_NAMES_JS[day.getDay()];
+          const rawPeriods = sched[wdName];
+          if (Array.isArray(rawPeriods) && rawPeriods.length) {
+            const periods = [...new Set(rawPeriods.map(Number).filter(n => !isNaN(n)))].sort((a, b) => a - b);
+            const isToday = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
+            for (const p of periods) {
+              if (isToday) {
+                const stMin = parseHHMMToMin(bell[String(p)]?.start);
+                if (stMin !== null && stMin <= nowMin) continue;
+              }
+              occDates.push(new Date(day.getTime()));
+              if (occDates.length >= needed) break;
+            }
+          }
+          day.setDate(day.getDate() + 1);
+        }
+      }
+
+      for (let j = 0; j < Math.min(needed, occDates.length); j++) {
+        map.set(normKey(cls.topics[startIdx + j].full_path), formatDateShortJS(occDates[j]));
+      }
+      return map;
+    }
+
     function openSheet(classPath, topicPath) {
       const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
       if (!cls) return;
       const topic = cls.topics.find(t => normKey(t.full_path) === normKey(topicPath));
       if (!topic) return;
+      const liveDates = buildLiveSuffixMap(cls);
+      const dateLbl = liveDates.get(normKey(topic.full_path)) || '';
       sheetCtx = { classPath: cls.path, topicPath: topic.full_path };
       document.getElementById('sheetTitle').textContent = topic.name;
-      document.getElementById('sheetSub').textContent = `Klasse ${cls.name}` + (topic.date_suffix ? `  •  ${topic.date_suffix}` : '');
+      document.getElementById('sheetSub').textContent = `Klasse ${cls.name}` + (dateLbl ? `  •  ${dateLbl}` : '');
       document.getElementById('sheetNote').value = getTopicNote(topic.full_path);
       document.getElementById('sheetBackdrop').classList.add('open');
     }
@@ -801,18 +883,20 @@
       }
       const q = (document.getElementById('pickerSearch').value || '').trim().toLowerCase();
       const pCls = esc(cls.path);
+      const liveDates = buildLiveSuffixMap(cls);
       let html = '';
       for (const t of cls.topics) {
         if (q && !t.name.toLowerCase().includes(q) && !(getTopicNote(t.full_path) || '').toLowerCase().includes(q)) continue;
         const m = getTopicMark(t.full_path);
         const note = getTopicNote(t.full_path);
+        const dateLbl = liveDates.get(normKey(t.full_path)) || '';
         const rowCls = m === 'red' ? 'is-red' : (m === 'darkturquoise' ? 'is-turq' : '');
         const pTopic = esc(t.full_path);
         html += `
           <div class="picker-row ${rowCls}">
             <div class="picker-row-main" onclick="pickTopicMark('${pCls}', '${pTopic}', 'red')">
               <div class="picker-row-name ${computeColorClass(t)}">${esc(t.name)}</div>
-              ${t.date_suffix ? `<div class="topic-date" style="margin-top:2px;">${esc(t.date_suffix)}</div>` : ''}
+              ${dateLbl ? `<div class="topic-date" style="margin-top:2px;">${esc(dateLbl)}</div>` : ''}
               ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
             </div>
             <div class="picker-row-actions">
@@ -911,6 +995,9 @@
         const curBoxCls = curMark === 'red' ? 'is-red' : (curMark === 'darkturquoise' ? 'is-turq' : '');
         const note = curTopic ? getTopicNote(curTopic.full_path) : '';
         const curColor = curTopic ? computeColorClass(curTopic) : 'c-grey';
+        const liveDates = buildLiveSuffixMap(cls);
+        const curDateLbl = curTopic ? (liveDates.get(normKey(curTopic.full_path)) || '') : '';
+        const nextDateLbl = nextTopic ? (liveDates.get(normKey(nextTopic.full_path)) || '') : '';
         const pEsc = esc(cls.path);
 
         html += `
@@ -920,17 +1007,17 @@
               <span class="class-title ${cls.is_now ? 'now' : (cls.is_today ? 'today' : '')}">${esc(cls.name)}</span>
               ${cls.is_now ? '<span class="badge badge-now">JETZT</span>' : ''}
             </div>
-            <button class="head-pick-btn" onclick="openTopicPicker('${pEsc}')">📋 Stunden</button>
+            <button class="head-pick-btn" onclick="openTopicPicker('${pEsc}')">Stunden</button>
           </div>
           <div class="class-body-row">
             <div class="tri-window" onclick="openTopicPicker('${pEsc}')">
               <div class="tri-row prev ${prevTopic ? '' : 'tri-empty'}">${prevTopic ? esc(prevTopic.name) : '—'}</div>
               <div class="tri-row curr ${curBoxCls} ${curColor}">
                 <div>${esc(curTopic ? curTopic.name : 'Keine Ordner')}</div>
-                ${curTopic && curTopic.date_suffix ? `<div class="topic-date" style="margin-top:2px;">${esc(curTopic.date_suffix)}</div>` : ''}
+                ${curDateLbl ? `<div class="topic-date" style="margin-top:2px;">${esc(curDateLbl)}</div>` : ''}
                 ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
               </div>
-              <div class="tri-row next ${nextTopic ? '' : 'tri-empty'}">${nextTopic ? esc(nextTopic.name) : '—'}</div>
+              <div class="tri-row next ${nextTopic ? '' : 'tri-empty'}">${nextTopic ? esc(nextTopic.name) + (nextDateLbl ? ' · ' + esc(nextDateLbl) : '') : '—'}</div>
             </div>
             <div class="step-rail">
               <button class="step-btn" onclick="advanceClass('${pEsc}', -1)" title="Vorherige Stunde (Zurück)" aria-label="Zurück">▲</button>
@@ -956,9 +1043,11 @@
       </div>
       <div class="topic-list">`;
 
+      const liveDates = buildLiveSuffixMap(cls);
       for (const t of cls.topics) {
         const m = getTopicMark(t.full_path);
         const note = getTopicNote(t.full_path);
+        const dateLbl = liveDates.get(normKey(t.full_path)) || '';
         const rowCls = m === 'red' ? 'mark-red' : (m === 'darkturquoise' ? 'mark-darkturquoise' : '');
         html += `
         <div class="topic-row ${rowCls}" onclick="openSheet('${pCls}', '${esc(t.full_path)}')">
@@ -966,7 +1055,7 @@
             <div class="topic-name ${computeColorClass(t)}">${esc(t.name)}</div>
             ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
           </div>
-          ${t.date_suffix ? `<div class="topic-date">${esc(t.date_suffix)}</div>` : ''}
+          ${dateLbl ? `<div class="topic-date">${esc(dateLbl)}</div>` : ''}
         </div>`;
       }
       html += `</div>`;
