@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#2563EB" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <title>ClassSuite Mobile – OneDrive Sync</title>
+  <style>
+    :root {
+      --bg: #F4F6F9; --card: #FFFFFF; --text: #0F172A; --muted: #64748B; --border: #E2E8F0;
+      --primary: #2563EB; --primary-soft: #EFF6FF; --red: #DC2626; --red-soft: #FEE2E2;
+      --turq: #0891B2; --turq-soft: #CFFAFE; --green: #15803D; --lightgreen: #16A34A;
+      --brown: #B45309; --purple: #7E22CE; --pink: #DB2777; --mint: #059669;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); padding-top: 60px; padding-bottom: 76px;
+      overscroll-behavior-y: contain;
+    }
+    header {
+      position: fixed; top: 0; left: 0; right: 0; height: 58px;
+      background: #FFFFFF; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; z-index: 50;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; }
+    .status-pill {
+      font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    }
+    .status-online { background: #DCFCE7; color: #15803D; }
+    .status-cloud { background: #DBEAFE; color: #1D4ED8; }
+    .status-offline { background: #FEF3C7; color: #92400E; }
+    .icon-btn {
+      background: #F1F5F9; border: none; border-radius: 10px; width: 38px; height: 38px;
+      font-size: 17px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .icon-btn:active { background: #E2E8F0; transform: scale(0.95); }
+    main { max-width: 720px; margin: 0 auto; padding: 12px; }
+
+    .search-box, .field-input {
+      width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--border);
+      background: #FFFFFF; font-size: 15px; margin-bottom: 10px; outline: none;
+    }
+    .search-box:focus, .field-input:focus { border-color: var(--primary); }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+    }
+    .class-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+    }
+    .class-card.is-now { border: 2px solid var(--primary); }
+    .class-head {
+      padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+      background: #F8FAFC; border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    .class-title-wrap { display: flex; align-items: center; gap: 8px; }
+    .class-title { font-size: 17px; font-weight: 800; }
+    .class-title.now { color: var(--primary); }
+    .class-title.today { color: var(--red); }
+    .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+    .badge-now { background: #DBEAFE; color: #1D4ED8; }
+    .badge-today { background: var(--red-soft); color: var(--red); }
+
+    .current-topic-box { padding: 12px 14px; cursor: pointer; }
+    .current-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .current-name { font-size: 15.5px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
+
+    .quick-actions { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 8px; padding: 0 12px 12px 12px; }
+    .qa-btn {
+      border: 1px solid var(--border); background: #F8FAFC; color: var(--text);
+      border-radius: 10px; padding: 9px 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .qa-btn:active { transform: scale(0.97); }
+    .qa-btn.turq { background: var(--turq-soft); color: #0E7490; border-color: #67E8F9; }
+    .qa-btn.next { background: var(--primary); color: #FFFFFF; border-color: #1D4ED8; }
+    .qa-btn.danger { background: var(--red-soft); color: var(--red); border-color: #FCA5A5; }
+
+    .detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .back-btn { background: #FFFFFF; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .topic-list { background: #FFFFFF; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .topic-row {
+      padding: 13px 14px; border-bottom: 1px solid #F1F5F9;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer;
+    }
+    .topic-row:last-child { border-bottom: none; }
+    .topic-row.mark-red { background: #FEF2F2; }
+    .topic-row.mark-darkturquoise { background: #ECFEFF; }
+    .topic-main { flex: 1; min-width: 0; }
+    .topic-name { font-size: 15px; word-break: break-word; }
+    .topic-note { font-size: 12px; color: #92400E; background: #FEF3C7; padding: 3px 7px; border-radius: 6px; margin-top: 4px; display: inline-block; }
+    .topic-date { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+
+    .c-black { color: var(--text); } .c-grey { color: #94A3B8; } .c-chocolate { color: var(--brown); }
+    .c-blue { color: #1D4ED8; } .c-red { color: var(--red); font-weight: 700; }
+    .c-darkturquoise { color: var(--turq); font-weight: 700; } .c-green { color: var(--green); font-weight: 600; }
+    .c-springgreen3 { color: var(--lightgreen); font-weight: 600; } .c-purple { color: var(--purple); font-weight: 700; }
+    .c-deeppink { color: var(--pink); font-weight: 700; } .c-mediumspringgreen { color: var(--mint); font-weight: 600; }
+
+    .day-group-head { font-size: 13.5px; font-weight: 800; color: #1D4ED8; background: #EFF6FF; padding: 8px 12px; border-radius: 10px; margin: 14px 0 8px 0; }
+    .outlook-item {
+      background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px;
+      padding: 11px 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+    }
+    .out-time { min-width: 58px; text-align: center; background: #F1F5F9; border-radius: 8px; padding: 6px 4px; }
+    .out-period { font-weight: 800; font-size: 13px; }
+    .out-clock { font-size: 10.5px; color: var(--muted); }
+    .out-body { flex: 1; min-width: 0; }
+    .out-class { font-weight: 800; font-size: 14.5px; }
+    .out-topic { font-size: 14px; color: #334155; margin-top: 2px; }
+
+    nav {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 64px;
+      background: #FFFFFF; border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: 1fr 1fr 1fr; z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-tab {
+      border: none; background: transparent; color: var(--muted);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .nav-tab span.ico { font-size: 20px; }
+    .nav-tab.active { color: var(--primary); }
+
+    .sheet-backdrop {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.45);
+      z-index: 100; display: none; align-items: flex-end; justify-content: center;
+    }
+    .sheet-backdrop.open { display: flex; }
+    .sheet {
+      background: #FFFFFF; width: 100%; max-width: 540px;
+      border-top-left-radius: 20px; border-top-right-radius: 20px; padding: 16px 16px 24px 16px;
+    }
+    .sheet-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+    .sheet-sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+    .sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .sheet-btn {
+      padding: 12px 10px; border-radius: 12px; border: 1px solid var(--border);
+      background: #F8FAFC; font-size: 14px; font-weight: 700; cursor: pointer; text-align: left;
+    }
+    .sheet-btn.b-red { background: #FEF2F2; border-color: #FCA5A5; color: #B91C1C; }
+    .sheet-btn.b-turq { background: #ECFEFF; border-color: #67E8F9; color: #0E7490; }
+    .sheet-btn.b-lg { background: #F0FDF4; border-color: #86EFAC; color: #15803D; }
+    .sheet-btn.b-gr { background: #ECFDF5; border-color: #6EE7B7; color: #047857; }
+    .sheet-btn.full { grid-column: 1 / -1; text-align: center; }
+
+    .note-input { width: 100%; min-height: 68px; border-radius: 10px; border: 1px solid var(--border); padding: 10px; font-family: inherit; font-size: 14px; margin-bottom: 8px; }
+    .primary-full {
+      width: 100%; padding: 12px; border-radius: 12px; border: none;
+      background: var(--primary); color: #FFFFFF; font-weight: 700; font-size: 14.5px; cursor: pointer;
+    }
+    .field-label { display: block; font-size: 12.5px; font-weight: 700; color: #334155; margin-bottom: 4px; }
+
+    .toast {
+      position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%);
+      background: #0F172A; color: #FFFFFF; padding: 10px 16px; border-radius: 999px;
+      font-size: 13px; font-weight: 600; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      max-width: 92vw; text-align: center;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Eigenes Auswahl-Fenster für Einzelstunden */
+    .qa-btn.pick { background: #EFF6FF; border-color: #93C5FD; color: #1D4ED8; }
+    .picker-backdrop {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+      z-index: 120; display: none; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .picker-backdrop.open { display: flex; }
+    .picker-modal {
+      background: #FFFFFF; width: 100%; max-width: 520px; max-height: 84vh;
+      border-radius: 18px; box-shadow: 0 20px 50px rgba(15,23,42,0.28);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .picker-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 14px 16px; border-bottom: 1px solid var(--border); background: #F8FAFC;
+    }
+    .picker-title { font-size: 16px; font-weight: 800; color: #0F172A; }
+    .picker-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .picker-close {
+      border: 1px solid var(--border); background: #FFFFFF; color: #334155;
+      width: 34px; height: 34px; border-radius: 10px; font-size: 16px; font-weight: 800;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .picker-search-wrap { padding: 10px 14px 6px 14px; }
+    .picker-search {
+      width: 100%; padding: 9px 12px; border-radius: 10px;
+      border: 1px solid var(--border); font-size: 14px; font-family: inherit;
+    }
+    .picker-list {
+      overflow-y: auto; padding: 8px 14px 14px 14px;
+      display: flex; flex-direction: column; gap: 7px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .picker-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 12px 13px; border-radius: 12px; border: 1px solid var(--border);
+      background: #FFFFFF; cursor: pointer; text-align: left; width: 100%;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .picker-row:active { transform: scale(0.99); }
+    .picker-row.is-red { background: #FEF2F2; border-color: #FCA5A5; }
+    .picker-row.is-turq { background: #ECFEFF; border-color: #67E8F9; }
+    .picker-row-name { font-size: 14.5px; line-height: 1.3; word-break: break-word; }
+    .picker-row-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .picker-badge {
+      font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+    }
+    .picker-badge.red { background: #DC2626; color: #FFFFFF; }
+    .picker-badge.turq { background: #0E7490; color: #FFFFFF; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">📚 ClassSuite</div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span id="statusPill" class="status-pill status-cloud" onclick="syncNow()">● Verbinde…</span>
+      <button class="icon-btn" onclick="syncNow()" title="Synchronisieren">🔄</button>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <nav>
+    <button id="tabClasses" class="nav-tab active" onclick="switchTab('classes')">
+      <span class="ico">📋</span><span>Klassen</span>
+    </button>
+    <button id="tabOutlook" class="nav-tab" onclick="switchTab('outlook')">
+      <span class="ico">📅</span><span>Ausblick</span>
+    </button>
+    <button id="tabSync" class="nav-tab" onclick="switchTab('sync')">
+      <span class="ico">☁️</span><span>OneDrive</span>
+    </button>
+  </nav>
+
+  <div id="sheetBackdrop" class="sheet-backdrop" onclick="if(event.target===this) closeSheet()">
+    <div class="sheet">
+      <div id="sheetTitle" class="sheet-title"></div>
+      <div id="sheetSub" class="sheet-sub"></div>
+      <div class="sheet-grid">
+        <button class="sheet-btn b-red" onclick="sheetMark('red')">🔴 Nächste Stunde (Rot)</button>
+        <button class="sheet-btn b-turq" onclick="sheetMark('darkturquoise')">🔵 Fertig (Türkis)</button>
+        <button class="sheet-btn b-lg" onclick="sheetMark('springgreen3')">🟢 Hellgrün</button>
+        <button class="sheet-btn b-gr" onclick="sheetMark('green')">🌲 Grün</button>
+        <button class="sheet-btn full" onclick="sheetMark(null)">✖ Markierung entfernen</button>
+      </div>
+      <textarea id="sheetNote" class="note-input" placeholder="Notiz zu diesem Thema…"></textarea>
+      <button class="primary-full" onclick="sheetSaveNote()">💾 Notiz speichern</button>
+    </div>
+  </div>
+
+  <div id="pickerBackdrop" class="picker-backdrop" onclick="if(event.target===this) closeTopicPicker()">
+    <div class="picker-modal" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+      <div class="picker-head">
+        <div>
+          <div id="pickerTitle" class="picker-title"></div>
+          <div class="picker-sub">Tippe auf die Stunde, die als Nächstes (🔴 Rot) ansteht</div>
+        </div>
+        <button class="picker-close" onclick="closeTopicPicker()" title="Schließen">✕</button>
+      </div>
+      <div class="picker-search-wrap">
+        <input id="pickerSearch" class="picker-search" type="search" placeholder="🔍 Stunde suchen…" oninput="renderTopicPickerList()" />
+      </div>
+      <div id="pickerList" class="picker-list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // =========================================================================
+    // Storage Keys
+    // =========================================================================
+    const K_OD_CFG   = 'cs_onedrive_cfg_v1';    // { clientId, folderPath }
+    const K_OD_TOKEN = 'cs_onedrive_tok_v1';    // { access_token, refresh_token, expires_at }
+    const K_PKCE     = 'cs_onedrive_pkce_v1';
+    const K_SNAP     = 'cs_mobile_snap_v2';     // mobile_data.json
+    const K_MARKS    = 'cs_mobile_marks_v2';    // folder_marks.json
+    const K_NOTES    = 'cs_mobile_notes_v2';    // folder_notes.json
+    const K_DIRTY    = 'cs_mobile_dirty_v2';    // { marks: bool, notes: bool }
+
+    const DEFAULT_OD_FOLDER = '001 Organisation/Programme und Code/ClassPrint_display_gui_daten';
+
+    let snap = null;
+    let marksMap = {};
+    let notesMap = {};
+    let currentTab = 'classes';
+    let selectedClassPath = null;
+    let searchQuery = '';
+    let syncMode = 'none'; // 'onedrive' | 'lan' | 'offline'
+    let sheetCtx = null;
+    let pickerClassPath = null;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+    function jget(k, defVal) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : defVal; } catch { return defVal; } }
+    function jset(k, val) { try { localStorage.setItem(k, JSON.stringify(val)); } catch {} }
+    function esc(s) { return String(s || '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+    function normKey(p) { return String(p || '').replace(/\\/g, '/').trim().toLowerCase(); }
+    function getRedirectUri() { return window.location.origin + window.location.pathname; }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('show'), 2600);
+    }
+
+    function getOdConfig() {
+      const cfg = jget(K_OD_CFG, { clientId: '', folderPath: DEFAULT_OD_FOLDER });
+      if (!cfg.folderPath) cfg.folderPath = DEFAULT_OD_FOLDER;
+      return cfg;
+    }
+
+    function getDirty() { return jget(K_DIRTY, { marks: false, notes: false }); }
+    function setDirty(d) { jset(K_DIRTY, d); updateStatusPill(); }
+
+    function updateStatusPill() {
+      const pill = document.getElementById('statusPill');
+      const d = getDirty();
+      const pending = (d.marks ? 1 : 0) + (d.notes ? 1 : 0);
+      if (pending > 0) {
+        pill.className = 'status-pill status-offline';
+        pill.textContent = `⏳ Sync ausstehend`;
+      } else if (syncMode === 'onedrive') {
+        pill.className = 'status-pill status-cloud';
+        pill.textContent = '☁️ OneDrive Live';
+      } else if (syncMode === 'lan') {
+        pill.className = 'status-pill status-online';
+        pill.textContent = '🟢 PC-WLAN Live';
+      } else {
+        pill.className = 'status-pill status-offline';
+        pill.textContent = '🟠 Offline';
+      }
+    }
+
+    // =========================================================================
+    // Microsoft OAuth 2.0 PKCE (Direct Browser -> Microsoft Graph / OneDrive)
+    // =========================================================================
+    function randomBase64Url(len) {
+      const arr = new Uint8Array(len);
+      crypto.getRandomValues(arr);
+      return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function sha256Base64Url(str) {
+      const buf = new TextEncoder().encode(str);
+      const hash = await crypto.subtle.digest('SHA-256', buf);
+      return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function startOneDriveLogin() {
+      const cfg = getOdConfig();
+      if (!cfg.clientId || !cfg.clientId.trim()) {
+        showToast('Bitte zuerst die Microsoft Client-ID eintragen');
+        return;
+      }
+      const verifier = randomBase64Url(48);
+      const challenge = await sha256Base64Url(verifier);
+      sessionStorage.setItem(K_PKCE, verifier);
+      localStorage.setItem(K_PKCE, verifier);
+
+      const params = new URLSearchParams({
+        client_id: cfg.clientId.trim(),
+        response_type: 'code',
+        redirect_uri: getRedirectUri(),
+        response_mode: 'query',
+        scope: 'Files.ReadWrite offline_access',
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+      });
+      window.location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
+    }
+
+    async function handleOAuthCallbackIfPresent() {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+      const err = url.searchParams.get('error_description') || url.searchParams.get('error');
+      if (err) {
+        showToast('Login-Fehler: ' + err.slice(0, 80));
+        history.replaceState({}, '', getRedirectUri());
+        return false;
+      }
+      if (!code) return false;
+
+      const cfg = getOdConfig();
+      const verifier = sessionStorage.getItem(K_PKCE) || localStorage.getItem(K_PKCE) || '';
+      const body = new URLSearchParams({
+        client_id: cfg.clientId.trim(),
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: getRedirectUri(),
+        code_verifier: verifier,
+        scope: 'Files.ReadWrite offline_access',
+      });
+      try {
+        const resp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+        const tok = await resp.json();
+        if (!resp.ok || !tok.access_token) throw new Error(tok.error_description || 'Token-Fehler');
+        jset(K_OD_TOKEN, {
+          access_token: tok.access_token,
+          refresh_token: tok.refresh_token || '',
+          expires_at: Date.now() + (tok.expires_in || 3600) * 1000 - 60000,
+        });
+        history.replaceState({}, '', getRedirectUri());
+        showToast('✅ Mit OneDrive verbunden!');
+        return true;
+      } catch (e) {
+        showToast('OneDrive-Login fehlgeschlagen: ' + e.message);
+        history.replaceState({}, '', getRedirectUri());
+        return false;
+      }
+    }
+
+    async function getValidOneDriveToken() {
+      const cfg = getOdConfig();
+      const tok = jget(K_OD_TOKEN, null);
+      if (!cfg.clientId || !tok || !tok.access_token) return null;
+      if (Date.now() < (tok.expires_at || 0)) return tok.access_token;
+      if (!tok.refresh_token) return null;
+
+      const body = new URLSearchParams({
+        client_id: cfg.clientId.trim(),
+        grant_type: 'refresh_token',
+        refresh_token: tok.refresh_token,
+        scope: 'Files.ReadWrite offline_access',
+      });
+      const resp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const nt = await resp.json();
+      if (!resp.ok || !nt.access_token) return null;
+      jset(K_OD_TOKEN, {
+        access_token: nt.access_token,
+        refresh_token: nt.refresh_token || tok.refresh_token,
+        expires_at: Date.now() + (nt.expires_in || 3600) * 1000 - 60000,
+      });
+      return nt.access_token;
+    }
+
+    function oneDriveFileUrl(filename) {
+      const folder = getOdConfig().folderPath.replace(/^\/+|\/+$/g, '');
+      const encoded = folder.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(filename);
+      return `https://graph.microsoft.com/v1.0/me/drive/root:/${encoded}:/content`;
+    }
+
+    async function odReadJson(token, filename, fallback = null) {
+      const resp = await fetch(oneDriveFileUrl(filename), {
+        headers: { Authorization: 'Bearer ' + token },
+        cache: 'no-store',
+      });
+      if (resp.status === 404) return fallback;
+      if (!resp.ok) throw new Error(`OneDrive GET ${filename}: HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    async function odWriteJson(token, filename, data) {
+      const resp = await fetch(oneDriveFileUrl(filename), {
+        method: 'PUT',
+        headers: {
+          Authorization: 'Bearer ' + token,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify(data, null, 2),
+      });
+      if (!resp.ok) throw new Error(`OneDrive PUT ${filename}: HTTP ${resp.status}`);
+    }
+
+    // =========================================================================
+    // Unified Sync (OneDrive first, then LAN PC fallback, then Offline Cache)
+    // =========================================================================
+    async function syncNow(silent = false) {
+      // 1) Try Direct OneDrive Sync
+      try {
+        const token = await getValidOneDriveToken();
+        if (token) {
+          const dirty = getDirty();
+          if (dirty.marks) await odWriteJson(token, 'folder_marks.json', marksMap);
+          if (dirty.notes) await odWriteJson(token, 'folder_notes.json', notesMap);
+          if (dirty.marks || dirty.notes) setDirty({ marks: false, notes: false });
+
+          const [newSnap, newMarks, newNotes] = await Promise.all([
+            odReadJson(token, 'mobile_data.json', null),
+            odReadJson(token, 'folder_marks.json', {}),
+            odReadJson(token, 'folder_notes.json', {}),
+          ]);
+          if (newSnap) { snap = newSnap; jset(K_SNAP, snap); }
+          if (newMarks) { marksMap = newMarks; jset(K_MARKS, marksMap); }
+          if (newNotes) { notesMap = newNotes; jset(K_NOTES, notesMap); }
+
+          syncMode = 'onedrive';
+          updateStatusPill();
+          render();
+          if (!silent) showToast('☁️ Mit OneDrive synchronisiert');
+          return;
+        }
+      } catch (e) {
+        console.warn('OneDrive Sync Fehler:', e);
+      }
+
+      // 2) Fallback: Local PC Server (falls über http://<PC-IP>:8765 geöffnet)
+      try {
+        const resp = await fetch('/api/state', { cache: 'no-store' });
+        if (resp.ok) {
+          const data = await resp.json();
+          // Convert LAN payload to unified snap + marksMap + notesMap
+          snap = {
+            generated_at: data.server_time,
+            highlight_day: data.highlight_day,
+            current_period: data.current_period,
+            classes: data.classes.map(c => ({
+              name: c.name, path: c.path.replace(/\\/g, '/'),
+              is_now: c.is_now, is_today: c.is_today,
+              topics: c.topics.map(t => ({
+                name: t.name, full_path: t.full_path.replace(/\\/g, '/'),
+                date_suffix: t.date_suffix, is_last: t.is_last, is_next: t.is_next, is_empty: t.is_empty
+              }))
+            })),
+            outlook: data.outlook,
+          };
+          marksMap = {};
+          notesMap = {};
+          data.classes.forEach(c => c.topics.forEach(t => {
+            const k = t.full_path.replace(/\\/g, '/');
+            if (t.mark) marksMap[k] = t.mark;
+            if (t.note) notesMap[k] = t.note;
+          }));
+          jset(K_SNAP, snap); jset(K_MARKS, marksMap); jset(K_NOTES, notesMap);
+          syncMode = 'lan';
+          updateStatusPill();
+          render();
+          if (!silent) showToast('🟢 Mit PC synchronisiert');
+          return;
+        }
+      } catch {}
+
+      syncMode = 'offline';
+      updateStatusPill();
+      render();
+      if (!silent) showToast('Offline – lokale Daten aktiv');
+    }
+
+    // =========================================================================
+    // Mark & Note Mutations (exact ClassSuite rules!)
+    // =========================================================================
+    function getTopicMark(fullPath) {
+      const target = normKey(fullPath);
+      for (const [k, v] of Object.entries(marksMap)) {
+        if (normKey(k) === target) return String(v).toLowerCase();
+      }
+      return null;
+    }
+
+    function getTopicNote(fullPath) {
+      const target = normKey(fullPath);
+      for (const [k, v] of Object.entries(notesMap)) {
+        if (normKey(k) === target) return String(v);
+      }
+      return '';
+    }
+
+    async function pushMarksOrQueue(lanPayload = null) {
+      jset(K_MARKS, marksMap);
+      render();
+      try {
+        const token = await getValidOneDriveToken();
+        if (token) {
+          await odWriteJson(token, 'folder_marks.json', marksMap);
+          setDirty({ ...getDirty(), marks: false });
+          syncMode = 'onedrive';
+          updateStatusPill();
+          return;
+        }
+      } catch (e) {
+        setDirty({ ...getDirty(), marks: true });
+        showToast('⏳ Offline gespeichert – synct bald mit OneDrive');
+        return;
+      }
+      if (syncMode === 'lan' && lanPayload) {
+        try {
+          await fetch(lanPayload.endpoint, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lanPayload.body),
+          });
+          return;
+        } catch {}
+      }
+      setDirty({ ...getDirty(), marks: true });
+    }
+
+    async function pushNotesOrQueue(topicPath, noteText) {
+      jset(K_NOTES, notesMap);
+      render();
+      try {
+        const token = await getValidOneDriveToken();
+        if (token) {
+          await odWriteJson(token, 'folder_notes.json', notesMap);
+          setDirty({ ...getDirty(), notes: false });
+          syncMode = 'onedrive';
+          updateStatusPill();
+          return;
+        }
+      } catch {
+        setDirty({ ...getDirty(), notes: true });
+        showToast('⏳ Notiz offline gespeichert');
+        return;
+      }
+      if (syncMode === 'lan') {
+        try {
+          await fetch('/api/note', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic_path: topicPath, note: noteText }),
+          });
+          return;
+        } catch {}
+      }
+      setDirty({ ...getDirty(), notes: true });
+    }
+
+    function setMarkLocal(classPath, topicPath, color) {
+      const targetNorm = normKey(topicPath);
+      const classNorm = normKey(classPath);
+      const prev = getTopicMark(topicPath);
+
+      if (color === 'red' || color === 'darkturquoise') {
+        for (const k of Object.keys(marksMap)) {
+          const parentNorm = normKey(k.substring(0, k.lastIndexOf('/')));
+          if (parentNorm === classNorm && normKey(k) !== targetNorm && ['red', 'darkturquoise'].includes(String(marksMap[k]).toLowerCase())) {
+            delete marksMap[k];
+          }
+        }
+      } else if (color === 'green') {
+        for (const k of Object.keys(marksMap)) {
+          const parentNorm = normKey(k.substring(0, k.lastIndexOf('/')));
+          if (parentNorm === classNorm && normKey(k) !== targetNorm && String(marksMap[k]).toLowerCase() === 'green') {
+            delete marksMap[k];
+          }
+        }
+      }
+
+      for (const k of Object.keys(marksMap)) {
+        if (normKey(k) === targetNorm) delete marksMap[k];
+      }
+      if (color && prev !== color) {
+        marksMap[topicPath.replace(/\\/g, '/')] = color;
+      }
+    }
+
+    async function advanceClass(classPath, dir) {
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
+      if (!cls || !cls.topics.length) return;
+      let idx = cls.topics.findIndex(t => ['red', 'darkturquoise'].includes(getTopicMark(t.full_path)));
+      if (idx < 0) idx = cls.topics.findIndex(t => t.is_next);
+      const newIdx = idx < 0 ? 0 : Math.max(0, Math.min(cls.topics.length - 1, idx + (dir >= 0 ? 1 : -1)));
+      const target = cls.topics[newIdx];
+      if (getTopicMark(target.full_path) !== 'red') {
+        setMarkLocal(cls.path, target.full_path, 'red');
+      }
+      showToast(dir > 0 ? `⏭ ${cls.name} → ${target.name}` : `⏮ ${cls.name} → ${target.name}`);
+      await pushMarksOrQueue({ endpoint: '/api/advance', body: { class_path: cls.path, direction: dir } });
+    }
+
+    async function markCurrentTurquoise(classPath) {
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
+      if (!cls || !cls.topics.length) return;
+      const cur = cls.topics.find(t => ['red', 'darkturquoise'].includes(getTopicMark(t.full_path)))
+        || cls.topics.find(t => t.is_next) || cls.topics[0];
+      setMarkLocal(cls.path, cur.full_path, 'darkturquoise');
+      showToast('🔵 Als fertig markiert');
+      await pushMarksOrQueue({ endpoint: '/api/mark', body: { class_path: cls.path, topic_path: cur.full_path, color: 'darkturquoise' } });
+    }
+
+    // =========================================================================
+    // UI Rendering
+    // =========================================================================
+    function computeColorClass(t) {
+      const m = getTopicMark(t.full_path);
+      const base = t.is_last ? 'chocolate' : (t.is_next ? 'blue' : (t.is_empty ? 'grey' : 'black'));
+      if (m) {
+        if (m === 'red' && (base === 'chocolate' || base === 'blue')) return 'c-purple';
+        if (m === 'darkturquoise' && (base === 'chocolate' || base === 'blue')) return 'c-deeppink';
+        if (m === 'green' && base === 'blue') return 'c-mediumspringgreen';
+        return 'c-' + m;
+      }
+      return 'c-' + base;
+    }
+
+    function openSheet(classPath, topicPath) {
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
+      if (!cls) return;
+      const topic = cls.topics.find(t => normKey(t.full_path) === normKey(topicPath));
+      if (!topic) return;
+      sheetCtx = { classPath: cls.path, topicPath: topic.full_path };
+      document.getElementById('sheetTitle').textContent = topic.name;
+      document.getElementById('sheetSub').textContent = `Klasse ${cls.name}` + (topic.date_suffix ? `  •  ${topic.date_suffix}` : '');
+      document.getElementById('sheetNote').value = getTopicNote(topic.full_path);
+      document.getElementById('sheetBackdrop').classList.add('open');
+    }
+
+    function closeSheet() { document.getElementById('sheetBackdrop').classList.remove('open'); sheetCtx = null; }
+
+    function openTopicPicker(classPath) {
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
+      if (!cls) return;
+      pickerClassPath = cls.path;
+      document.getElementById('pickerTitle').textContent = `📋 ${cls.name} – Einzelstunden`;
+      const searchEl = document.getElementById('pickerSearch');
+      searchEl.value = '';
+      renderTopicPickerList();
+      document.getElementById('pickerBackdrop').classList.add('open');
+      setTimeout(() => {
+        const active = document.querySelector('#pickerList .picker-row.is-red, #pickerList .picker-row.is-turq');
+        if (active) active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+
+    function closeTopicPicker() {
+      document.getElementById('pickerBackdrop').classList.remove('open');
+      pickerClassPath = null;
+    }
+
+    function renderTopicPickerList() {
+      const listEl = document.getElementById('pickerList');
+      if (!pickerClassPath) { listEl.innerHTML = ''; return; }
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(pickerClassPath));
+      if (!cls || !cls.topics.length) {
+        listEl.innerHTML = `<div style="text-align:center; color:#64748B; padding:24px;">Keine Einzelstunden gefunden.</div>`;
+        return;
+      }
+      const q = (document.getElementById('pickerSearch').value || '').trim().toLowerCase();
+      const pCls = esc(cls.path);
+      let html = '';
+      for (const t of cls.topics) {
+        if (q && !t.name.toLowerCase().includes(q) && !(getTopicNote(t.full_path) || '').toLowerCase().includes(q)) continue;
+        const m = getTopicMark(t.full_path);
+        const note = getTopicNote(t.full_path);
+        const rowCls = m === 'red' ? 'is-red' : (m === 'darkturquoise' ? 'is-turq' : '');
+        const badge = m === 'red'
+          ? '<span class="picker-badge red">🔴 Nächste</span>'
+          : (m === 'darkturquoise' ? '<span class="picker-badge turq">🔵 Fertig</span>' : '');
+        html += `
+          <button class="picker-row ${rowCls}" onclick="pickNextTopic('${pCls}', '${esc(t.full_path)}')">
+            <div style="min-width:0; flex:1;">
+              <div class="picker-row-name ${computeColorClass(t)}">${esc(t.name)}</div>
+              ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
+            </div>
+            <div class="picker-row-meta">
+              ${badge}
+              ${t.date_suffix ? `<span class="topic-date">${esc(t.date_suffix)}</span>` : ''}
+            </div>
+          </button>`;
+      }
+      listEl.innerHTML = html || `<div style="text-align:center; color:#64748B; padding:20px;">Kein Treffer für „${esc(q)}“.</div>`;
+    }
+
+    async function pickNextTopic(classPath, topicPath) {
+      const cls = (snap?.classes || []).find(c => normKey(c.path) === normKey(classPath));
+      const topic = cls?.topics.find(t => normKey(t.full_path) === normKey(topicPath));
+      closeTopicPicker();
+      if (!cls || !topic) return;
+      setMarkLocal(cls.path, topic.full_path, 'red');
+      showToast(`🔴 ${cls.name} → ${topic.name}`);
+      await pushMarksOrQueue({ endpoint: '/api/mark', body: { class_path: cls.path, topic_path: topic.full_path, color: 'red' } });
+    }
+
+    async function sheetMark(color) {
+      if (!sheetCtx) return;
+      const { classPath, topicPath } = sheetCtx;
+      closeSheet();
+      setMarkLocal(classPath, topicPath, color);
+      const labels = { red: '🔴 Rot markiert', darkturquoise: '🔵 Fertig (Türkis)', springgreen3: '🟢 Hellgrün', green: '🌲 Grün', null: 'Markierung entfernt' };
+      showToast(labels[color]);
+      await pushMarksOrQueue({ endpoint: '/api/mark', body: { class_path: classPath, topic_path: topicPath, color } });
+    }
+
+    async function sheetSaveNote() {
+      if (!sheetCtx) return;
+      const { topicPath } = sheetCtx;
+      const note = document.getElementById('sheetNote').value.trim();
+      closeSheet();
+      const targetNorm = normKey(topicPath);
+      for (const k of Object.keys(notesMap)) {
+        if (normKey(k) === targetNorm) delete notesMap[k];
+      }
+      if (note) notesMap[topicPath.replace(/\\/g, '/')] = note;
+      showToast(note ? '📝 Notiz gespeichert' : '🗑 Notiz gelöscht');
+      await pushNotesOrQueue(topicPath, note);
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      selectedClassPath = null;
+      document.getElementById('tabClasses').classList.toggle('active', tab === 'classes');
+      document.getElementById('tabOutlook').classList.toggle('active', tab === 'outlook');
+      document.getElementById('tabSync').classList.toggle('active', tab === 'sync');
+      render();
+    }
+
+    function openClassDetail(path) {
+      selectedClassPath = path;
+      render();
+      setTimeout(() => {
+        const el = document.querySelector('.topic-row.mark-red, .topic-row.mark-darkturquoise');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+
+    function render() {
+      const root = document.getElementById('app');
+      if (currentTab === 'sync') { renderSyncTab(root); return; }
+      if (!snap || !snap.classes) {
+        root.innerHTML = `<div class="card" style="text-align:center; padding:32px 16px;">
+          <div style="font-size:40px; margin-bottom:10px;">☁️</div>
+          <div style="font-weight:800; font-size:17px; margin-bottom:8px;">OneDrive verbinden</div>
+          <p style="color:#64748B; font-size:14px; margin-bottom:16px;">
+            Verbinde einmalig dein Microsoft OneDrive, damit deine Klassen & Markierungen auch bei ausgeschaltetem PC immer aktuell sind.
+          </p>
+          <button class="primary-full" onclick="switchTab('sync')">☁️ OneDrive einrichten</button>
+        </div>`;
+        return;
+      }
+      if (currentTab === 'outlook') { renderOutlook(root); return; }
+      if (selectedClassPath) { renderClassDetail(root); return; }
+      renderClassesGrid(root);
+    }
+
+    function renderClassesGrid(root) {
+      let html = `<input class="search-box" type="search" placeholder="🔍 Klasse oder Thema suchen…" value="${esc(searchQuery)}" oninput="searchQuery=this.value; render();" />`;
+      const q = searchQuery.trim().toLowerCase();
+
+      for (const cls of snap.classes) {
+        if (q && !cls.name.toLowerCase().includes(q) && !cls.topics.some(t => t.name.toLowerCase().includes(q))) continue;
+        const curTopic = cls.topics.find(t => ['red', 'darkturquoise'].includes(getTopicMark(t.full_path)))
+          || cls.topics.find(t => t.is_next) || cls.topics[0];
+        const m = curTopic ? getTopicMark(curTopic.full_path) : null;
+        const note = curTopic ? getTopicNote(curTopic.full_path) : '';
+        const curStatus = m === 'darkturquoise' ? '🔵 Fertig (Türkis)' : (m === 'red' ? '🔴 Nächste Stunde (Rot)' : 'Nächster Ordner');
+        const curColor = curTopic ? computeColorClass(curTopic) : 'c-grey';
+        const pEsc = esc(cls.path);
+
+        html += `
+        <div class="class-card ${cls.is_now ? 'is-now' : ''}">
+          <div class="class-head" onclick="openClassDetail('${pEsc}')">
+            <div class="class-title-wrap">
+              <span class="class-title ${cls.is_now ? 'now' : (cls.is_today ? 'today' : '')}">${esc(cls.name)}</span>
+              ${cls.is_now ? '<span class="badge badge-now">JETZT</span>' : ''}
+            </div>
+            <span style="color:#64748B; font-size:13px; font-weight:600;">Alle Themen ›</span>
+          </div>
+          <div class="current-topic-box" onclick="openClassDetail('${pEsc}')">
+            <div class="current-label">${curStatus}${curTopic && curTopic.date_suffix ? '  •  ' + esc(curTopic.date_suffix) : ''}</div>
+            <div class="current-name ${curColor}">${esc(curTopic ? curTopic.name : 'Keine Ordner')}</div>
+            ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
+          </div>
+          <div class="quick-actions">
+            <button class="qa-btn" onclick="advanceClass('${pEsc}', -1)">⏮ Zurück</button>
+            <button class="qa-btn pick" onclick="openTopicPicker('${pEsc}')">📋 Stunden</button>
+            <button class="qa-btn next" onclick="advanceClass('${pEsc}', 1)">⏭ Weiter</button>
+          </div>
+        </div>`;
+      }
+      root.innerHTML = html;
+    }
+
+    function renderClassDetail(root) {
+      const cls = snap.classes.find(c => normKey(c.path) === normKey(selectedClassPath));
+      if (!cls) { selectedClassPath = null; render(); return; }
+      const pCls = esc(cls.path);
+
+      let html = `
+      <div class="detail-header">
+        <button class="back-btn" onclick="selectedClassPath=null; render();">← Zurück</button>
+        <div style="font-size:19px; font-weight:800;">${esc(cls.name)}</div>
+        <div style="flex:1"></div>
+        <button class="qa-btn next" style="padding:8px 14px;" onclick="advanceClass('${pCls}', 1)">⏭ Weiter</button>
+      </div>
+      <div class="topic-list">`;
+
+      for (const t of cls.topics) {
+        const m = getTopicMark(t.full_path);
+        const note = getTopicNote(t.full_path);
+        const rowCls = m === 'red' ? 'mark-red' : (m === 'darkturquoise' ? 'mark-darkturquoise' : '');
+        html += `
+        <div class="topic-row ${rowCls}" onclick="openSheet('${pCls}', '${esc(t.full_path)}')">
+          <div class="topic-main">
+            <div class="topic-name ${computeColorClass(t)}">${esc(t.name)}</div>
+            ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
+          </div>
+          ${t.date_suffix ? `<div class="topic-date">${esc(t.date_suffix)}</div>` : ''}
+        </div>`;
+      }
+      html += `</div>`;
+      root.innerHTML = html;
+    }
+
+    function renderOutlook(root) {
+      const items = snap.outlook || [];
+      if (!items.length) {
+        root.innerHTML = `<div class="card" style="text-align:center; color:#64748B;">Keine anstehenden Stunden im Ausblick.</div>`;
+        return;
+      }
+      let html = '', lastDate = '';
+      for (const it of items) {
+        if (it.date !== lastDate) {
+          const d = new Date(it.date + 'T00:00:00');
+          html += `<div class="day-group-head">📅 ${esc(d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }))}</div>`;
+          lastDate = it.date;
+        }
+        html += `
+        <div class="outlook-item" onclick="openSheet('${esc(it.class_root_path)}', '${esc(it.topic_full_path)}')">
+          <div class="out-time">
+            <div class="out-period">${esc(it.period)}. Std</div>
+            <div class="out-clock">${esc(it.start || '')}</div>
+          </div>
+          <div class="out-body">
+            <div class="out-class">${esc(it.class)}</div>
+            <div class="out-topic">${esc(it.display_topic || it.topic_folder)}</div>
+          </div>
+        </div>`;
+      }
+      root.innerHTML = html;
+    }
+
+    function renderSyncTab(root) {
+      const cfg = getOdConfig();
+      const tok = jget(K_OD_TOKEN, null);
+      const connected = Boolean(tok && tok.access_token);
+      root.innerHTML = `
+      <div class="card">
+        <div style="font-size:16px; font-weight:800; margin-bottom:6px;">☁️ Direkter OneDrive-Sync</div>
+        <p style="font-size:13px; color:#475569; margin-top:0;">
+          Synchronisiert <code>folder_marks.json</code>, <code>folder_notes.json</code> und <code>mobile_data.json</code>
+          direkt über dein OneDrive – funktioniert <b>auch wenn alle PCs ausgeschaltet sind</b> und zwischen mehreren PCs!
+        </p>
+        <label class="field-label">Microsoft App Client-ID (einmalig aus Azure Portal)</label>
+        <input id="odClientId" class="field-input" value="${esc(cfg.clientId)}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+
+        <label class="field-label">OneDrive-Ordnerpfad (relativ zum OneDrive-Hauptordner)</label>
+        <input id="odFolder" class="field-input" value="${esc(cfg.folderPath)}" />
+
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button class="primary-full" onclick="saveOdConfigAndLogin()">${connected ? '🔄 Neu mit OneDrive verbinden' : '🔐 Mit Microsoft / OneDrive anmelden'}</button>
+        </div>
+        ${connected ? `<button class="qa-btn danger" style="width:100%; margin-top:8px;" onclick="logoutOneDrive()">Abmelden</button>` : ''}
+      </div>
+      <div class="card" style="font-size:12.5px; color:#475569;">
+        <b>Redirect-URI für Azure App-Registrierung (SPA):</b><br/>
+        <code style="word-break:break-all; color:#1D4ED8;">${esc(getRedirectUri())}</code>
+      </div>`;
+    }
+
+    function saveOdConfigAndLogin() {
+      const clientId = document.getElementById('odClientId').value.trim();
+      const folderPath = document.getElementById('odFolder').value.trim() || DEFAULT_OD_FOLDER;
+      jset(K_OD_CFG, { clientId, folderPath });
+      startOneDriveLogin();
+    }
+
+    function logoutOneDrive() {
+      localStorage.removeItem(K_OD_TOKEN);
+      syncMode = 'offline';
+      updateStatusPill();
+      showToast('Von OneDrive abgemeldet');
+      render();
+    }
+
+    // Boot
+    (async () => {
+      snap = jget(K_SNAP, null);
+      marksMap = jget(K_MARKS, {});
+      notesMap = jget(K_NOTES, {});
+      // URL-Parameter ?clientId=...&folder=... (z.B. aus QR-Code) automatisch übernehmen
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('clientId')) {
+        const cur = getOdConfig();
+        jset(K_OD_CFG, { clientId: sp.get('clientId'), folderPath: sp.get('folder') || cur.folderPath });
+      }
+      await handleOAuthCallbackIfPresent();
+      render();
+      await syncNow(true);
+    })();
+  </script>
+</body>
+</html>
