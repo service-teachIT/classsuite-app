@@ -73,6 +73,45 @@
     .current-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
     .current-name { font-size: 15.5px; font-weight: 700; margin-top: 3px; line-height: 1.3; }
 
+    .head-pick-btn {
+      border: 1px solid #93C5FD; background: #EFF6FF; color: #1D4ED8;
+      border-radius: 9px; padding: 5px 10px; font-size: 12.5px; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .head-pick-btn:active { transform: scale(0.96); }
+    .class-body-row {
+      display: flex; align-items: stretch; gap: 10px; padding: 10px 12px;
+    }
+    .tri-window {
+      flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px;
+      justify-content: center; cursor: pointer;
+    }
+    .tri-row {
+      font-size: 12.5px; line-height: 1.3; padding: 3px 8px; border-radius: 8px;
+      color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tri-row.prev { opacity: 0.72; }
+    .tri-row.next { opacity: 0.88; color: #334155; }
+    .tri-row.curr {
+      font-size: 15px; font-weight: 700; padding: 7px 9px;
+      background: #F8FAFC; border: 1px solid var(--border);
+      white-space: normal; word-break: break-word;
+    }
+    .tri-row.curr.is-red { background: #FEF2F2; border-color: #FCA5A5; }
+    .tri-row.curr.is-turq { background: #ECFEFF; border-color: #67E8F9; }
+    .tri-empty { opacity: 0.35; font-style: italic; }
+    .step-rail {
+      display: flex; flex-direction: column; justify-content: center; gap: 6px;
+      flex-shrink: 0; width: 44px;
+    }
+    .step-btn {
+      flex: 1; min-height: 38px; border-radius: 10px; border: 1px solid var(--border);
+      background: #F8FAFC; color: #334155; font-size: 16px; font-weight: 800;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .step-btn:active { transform: scale(0.94); }
+    .step-btn.down { background: var(--primary); color: #FFFFFF; border-color: #1D4ED8; }
+
     .quick-actions { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 8px; padding: 0 12px 12px 12px; }
     .qa-btn {
       border: 1px solid var(--border); background: #F8FAFC; color: var(--text);
@@ -243,11 +282,11 @@
   <main id="app"></main>
 
   <nav>
-    <button id="tabClasses" class="nav-tab active" onclick="switchTab('classes')">
-      <span class="ico">📋</span><span>Klassen</span>
-    </button>
-    <button id="tabOutlook" class="nav-tab" onclick="switchTab('outlook')">
+    <button id="tabOutlook" class="nav-tab active" onclick="switchTab('outlook')">
       <span class="ico">📅</span><span>Ausblick</span>
+    </button>
+    <button id="tabClasses" class="nav-tab" onclick="switchTab('classes')">
+      <span class="ico">📋</span><span>Klassen</span>
     </button>
     <button id="tabSync" class="nav-tab subtle" onclick="switchTab('sync')" title="OneDrive-Einstellungen" aria-label="OneDrive-Einstellungen">
       <span class="ico">☁️</span>
@@ -305,7 +344,7 @@
     let snap = null;
     let marksMap = {};
     let notesMap = {};
-    let currentTab = 'classes';
+    let currentTab = 'outlook';
     let selectedClassPath = null;
     let searchQuery = '';
     let syncMode = 'none'; // 'onedrive' | 'lan' | 'offline'
@@ -863,30 +902,40 @@
       let html = '';
 
       for (const cls of snap.classes) {
-        const curTopic = cls.topics.find(t => ['red', 'darkturquoise'].includes(getTopicMark(t.full_path)))
-          || cls.topics.find(t => t.is_next) || cls.topics[0];
+        const topics = cls.topics || [];
+        const curIdx = getLiveStartIndex(cls);
+        const prevTopic = curIdx > 0 ? topics[curIdx - 1] : null;
+        const curTopic = topics[curIdx] || null;
+        const nextTopic = curIdx + 1 < topics.length ? topics[curIdx + 1] : null;
+        const curMark = curTopic ? getTopicMark(curTopic.full_path) : null;
+        const curBoxCls = curMark === 'red' ? 'is-red' : (curMark === 'darkturquoise' ? 'is-turq' : '');
         const note = curTopic ? getTopicNote(curTopic.full_path) : '';
         const curColor = curTopic ? computeColorClass(curTopic) : 'c-grey';
         const pEsc = esc(cls.path);
 
         html += `
         <div class="class-card ${cls.is_now ? 'is-now' : ''}">
-          <div class="class-head" onclick="openClassDetail('${pEsc}')">
-            <div class="class-title-wrap">
+          <div class="class-head">
+            <div class="class-title-wrap" onclick="openClassDetail('${pEsc}')">
               <span class="class-title ${cls.is_now ? 'now' : (cls.is_today ? 'today' : '')}">${esc(cls.name)}</span>
               ${cls.is_now ? '<span class="badge badge-now">JETZT</span>' : ''}
             </div>
-            <span style="color:#64748B; font-size:13px; font-weight:600;">Alle Themen ›</span>
+            <button class="head-pick-btn" onclick="openTopicPicker('${pEsc}')">📋 Stunden</button>
           </div>
-          <div class="current-topic-box" onclick="openClassDetail('${pEsc}')">
-            ${curTopic && curTopic.date_suffix ? `<div class="current-label">${esc(curTopic.date_suffix)}</div>` : ''}
-            <div class="current-name ${curColor}">${esc(curTopic ? curTopic.name : 'Keine Ordner')}</div>
-            ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
-          </div>
-          <div class="quick-actions">
-            <button class="qa-btn" onclick="advanceClass('${pEsc}', -1)">⏮ Zurück</button>
-            <button class="qa-btn pick" onclick="openTopicPicker('${pEsc}')">📋 Stunden</button>
-            <button class="qa-btn next" onclick="advanceClass('${pEsc}', 1)">⏭ Weiter</button>
+          <div class="class-body-row">
+            <div class="tri-window" onclick="openTopicPicker('${pEsc}')">
+              <div class="tri-row prev ${prevTopic ? '' : 'tri-empty'}">${prevTopic ? esc(prevTopic.name) : '—'}</div>
+              <div class="tri-row curr ${curBoxCls} ${curColor}">
+                <div>${esc(curTopic ? curTopic.name : 'Keine Ordner')}</div>
+                ${curTopic && curTopic.date_suffix ? `<div class="topic-date" style="margin-top:2px;">${esc(curTopic.date_suffix)}</div>` : ''}
+                ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
+              </div>
+              <div class="tri-row next ${nextTopic ? '' : 'tri-empty'}">${nextTopic ? esc(nextTopic.name) : '—'}</div>
+            </div>
+            <div class="step-rail">
+              <button class="step-btn" onclick="advanceClass('${pEsc}', -1)" title="Vorherige Stunde (Zurück)" aria-label="Zurück">▲</button>
+              <button class="step-btn down" onclick="advanceClass('${pEsc}', 1)" title="Nächste Stunde (Weiter)" aria-label="Weiter">▼</button>
+            </div>
           </div>
         </div>`;
       }
