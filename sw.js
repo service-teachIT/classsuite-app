@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classsuite-onedrive-pwa-v37';
+const CACHE_NAME = 'classsuite-onedrive-pwa-v38';
 const APP_SHELL = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', (event) => {
