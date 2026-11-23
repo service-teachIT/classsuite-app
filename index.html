@@ -1127,7 +1127,7 @@
             <div class="out-clock">${esc(it.start || '')}</div>
           </div>
           <div class="out-body">
-            <div class="out-class">${esc(it.class)}</div>
+            <div class="out-class">${esc(it.class)}${it.room ? ` (${esc(it.room)})` : ''}</div>
             <div class="out-topic">${esc(displayTopic)}</div>
             ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
           </div>
