@@ -1299,23 +1299,14 @@
       render();
       await syncNow(true);
 
-      // Automatischer Live-Sync beim Zurückkehren in die App & alle 30 Sekunden (für Notizen & Markierungen vom PC)
-      let lastAutoSync = Date.now();
-      const autoSyncIfDue = (minGapMs) => {
-        if (document.visibilityState === 'hidden') return;
-        const now = Date.now();
-        if (now - lastAutoSync < minGapMs) return;
-        lastAutoSync = now;
-        syncNow(true);
-      };
+      // Nur beim Öffnen / Zurückkehren in die App synchronisieren (kein Hintergrund-Intervall)
+      let lastOpenSync = Date.now();
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') autoSyncIfDue(4000);
+        if (document.visibilityState === 'visible' && Date.now() - lastOpenSync >= 5000) {
+          lastOpenSync = Date.now();
+          syncNow(true);
+        }
       });
-      window.addEventListener('focus', () => autoSyncIfDue(4000));
-      setInterval(() => {
-        autoSyncIfDue(25000);
-        if (currentTab === 'outlook' && snap) render();
-      }, 30000);
     })();
   </script>
 </body>
