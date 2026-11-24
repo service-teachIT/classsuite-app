@@ -598,6 +598,7 @@
           syncMode = 'onedrive';
           updateStatusPill();
           render();
+          if (pickerClassPath) renderTopicPickerList();
           if (!silent) showToast('☁️ Mit OneDrive synchronisiert');
           return;
         }
@@ -698,13 +699,28 @@
     async function pushNotesOrQueue(topicPath, noteText) {
       jset(K_NOTES, notesMap);
       render();
+      if (pickerClassPath) renderTopicPickerList();
       try {
         const token = await getValidOneDriveToken();
         if (token) {
-          await odWriteJson(token, 'folder_notes.json', notesMap);
+          // Neuesten Stand aus OneDrive laden und nur diese eine Stunde aktualisieren/löschen (kein Überschreiben von PC-Notizen!)
+          const remoteNotes = await odReadJson(token, 'folder_notes.json', {});
+          const merged = (remoteNotes && typeof remoteNotes === 'object') ? { ...remoteNotes } : {};
+          const targetNorm = normKey(topicPath);
+          for (const k of Object.keys(merged)) {
+            if (normKey(k) === targetNorm) delete merged[k];
+          }
+          if (noteText && noteText.trim()) {
+            merged[topicPath.replace(/\\/g, '/')] = noteText.trim();
+          }
+          await odWriteJson(token, 'folder_notes.json', merged);
+          notesMap = merged;
+          jset(K_NOTES, notesMap);
           setDirty({ ...getDirty(), notes: false });
           syncMode = 'onedrive';
           updateStatusPill();
+          render();
+          if (pickerClassPath) renderTopicPickerList();
           return;
         }
       } catch {
@@ -1282,8 +1298,22 @@
       await handleOAuthCallbackIfPresent();
       render();
       await syncNow(true);
-      // Alle 30 Sekunden Ausblick-Live-Highlight (aktuelle Stunde) aktualisieren
+
+      // Automatischer Live-Sync beim Zurückkehren in die App & alle 30 Sekunden (für Notizen & Markierungen vom PC)
+      let lastAutoSync = Date.now();
+      const autoSyncIfDue = (minGapMs) => {
+        if (document.visibilityState === 'hidden') return;
+        const now = Date.now();
+        if (now - lastAutoSync < minGapMs) return;
+        lastAutoSync = now;
+        syncNow(true);
+      };
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') autoSyncIfDue(4000);
+      });
+      window.addEventListener('focus', () => autoSyncIfDue(4000));
       setInterval(() => {
+        autoSyncIfDue(25000);
         if (currentTab === 'outlook' && snap) render();
       }, 30000);
     })();
