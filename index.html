@@ -1449,6 +1449,8 @@
               </div>`;
               continue;
             }
+            const rawCal = String(entry.calendar || '').trim();
+            const showCal = rawCal && !rawCal.includes('@') && rawCal !== 'Kalender' && !rawCal.startsWith('Google Kalender');
             html += `
             <div class="outlook-item is-gcal ${isNow ? 'is-now' : ''}">
               <div class="out-time">
@@ -1457,10 +1459,10 @@
               </div>
               <div class="out-body">
                 <div class="out-head-row">
-                  <div class="out-class">${esc(entry.calendar)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+                  <div class="out-class">${esc(showCal ? rawCal : entry.title)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
                   ${entry.location ? `<div class="out-room">${esc(entry.location)}</div>` : ''}
                 </div>
-                <div class="out-topic">${esc(entry.title)}</div>
+                ${showCal ? `<div class="out-topic">${esc(entry.title)}</div>` : ''}
               </div>
               ${inlineRedHtml}
             </div>`;
