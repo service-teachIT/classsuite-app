@@ -211,6 +211,15 @@
     .out-class { font-weight: 800; font-size: 14.5px; color: #1D4ED8; }
     .out-room { font-size: 12px; font-weight: 600; color: #94A3B8; white-space: nowrap; flex-shrink: 0; }
     .out-topic { font-size: 14px; color: #0F172A; margin-top: 2px; font-weight: 500; }
+    .outlook-item.is-gcal { background: #EEF2FF; border-color: #C7D2FE; }
+    .outlook-item.is-gcal .out-period { color: #4338CA; }
+    .outlook-item.is-gcal .out-class { color: #3730A3; font-size: 13.5px; }
+    .gcal-allday-item {
+      position: relative; background: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 10px;
+      padding: 6px 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; font-size: 13px; font-weight: 700; color: #3730A3;
+    }
+    .gcal-allday-meta { font-size: 11.5px; font-weight: 600; color: #6366F1; white-space: nowrap; }
 
     nav {
       position: fixed; bottom: 0; left: 0; right: 0; height: 64px;
@@ -415,6 +424,7 @@
     const K_MARKS    = 'cs_mobile_marks_v2';    // folder_marks.json
     const K_NOTES    = 'cs_mobile_notes_v2';    // folder_notes.json
     const K_SUBS     = 'cs_mobile_subs_v1';     // substitutions.json (Infoportal)
+    const K_GCAL     = 'cs_mobile_gcal_v1';     // calendar_events.json (Google Kalender)
     const K_DIRTY    = 'cs_mobile_dirty_v2';    // { marks: bool, notes: bool }
 
     const DEFAULT_OD_FOLDER = '001 Organisation/Programme und Code/ClassPrint_display_gui_daten';
@@ -423,6 +433,7 @@
     let marksMap = {};
     let notesMap = {};
     let subsData = { items: [] };
+    let calData = { items: [] };
     let currentTab = 'outlook';
     let selectedClassPath = null;
     let searchQuery = '';
@@ -652,16 +663,18 @@
           if (dirty.notes) await odWriteJson(token, 'folder_notes.json', notesMap);
           if (dirty.marks || dirty.notes) setDirty({ marks: false, notes: false });
 
-          const [newSnap, newMarks, newNotes, newSubs] = await Promise.all([
+          const [newSnap, newMarks, newNotes, newSubs, newCal] = await Promise.all([
             odReadJson(token, 'mobile_data.json', null),
             odReadJson(token, 'folder_marks.json', {}),
             odReadJson(token, 'folder_notes.json', {}),
             odReadJson(token, 'substitutions.json', { items: [] }),
+            odReadJson(token, 'calendar_events.json', { items: [] }),
           ]);
           if (newSnap) { snap = newSnap; jset(K_SNAP, snap); }
           if (newMarks) { marksMap = newMarks; jset(K_MARKS, marksMap); }
           if (newNotes) { notesMap = newNotes; jset(K_NOTES, notesMap); }
           if (newSubs && Array.isArray(newSubs.items)) { subsData = newSubs; jset(K_SUBS, subsData); }
+          if (newCal && Array.isArray(newCal.items)) { calData = newCal; jset(K_GCAL, calData); }
 
           syncMode = 'onedrive';
           updateStatusPill();
@@ -744,6 +757,7 @@
             marksMap,
             notesMap,
             subsData,
+            calData,
             odCfg: getOdConfig(),
             odToken: jget(K_OD_TOKEN, null),
           }));
@@ -1251,7 +1265,8 @@
     function renderOutlook(root) {
       const items = snap.outlook || [];
       const rawSubs = (subsData && Array.isArray(subsData.items)) ? subsData.items : [];
-      if (!items.length && !rawSubs.length) {
+      const rawCal = (calData && Array.isArray(calData.items)) ? calData.items : [];
+      if (!items.length && !rawSubs.length && !rawCal.length) {
         root.innerHTML = `<div class="card" style="text-align:center; color:#64748B;">Keine anstehenden Stunden im Ausblick.</div>`;
         return;
       }
@@ -1347,13 +1362,23 @@
         });
       }
 
-      mergedEntries.sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        if (a.period !== b.period) return a.period - b.period;
-        return a.kind === b.kind ? 0 : (a.kind === 'lesson' ? -1 : 1);
-      });
+      // Google-Kalender-Termine einfügen (ab heute)
+      for (const ev of rawCal) {
+        if (!ev || !ev.date || ev.date < todayIso) continue;
+        mergedEntries.push({
+          kind: 'gcal',
+          date: ev.date,
+          period: 0,
+          allDay: Boolean(ev.all_day),
+          start: ev.start || '',
+          end: ev.end || '',
+          title: ev.title || 'Termin',
+          location: ev.location || '',
+          calendar: ev.calendar || 'Kalender',
+        });
+      }
 
-      // Pause-Kästchen (10:15–10:40, zwischen 3. und 4. Stunde) pro Unterrichtstag einfügen
+      // Pause-Kästchen (10:15–10:40) pro Unterrichtstag einfügen und alles chronologisch nach Uhrzeit sortieren
       const pauseStart = bell['3']?.end || '10:15';
       const pauseEnd = bell['4']?.start || '10:40';
       const entriesByDate = new Map();
@@ -1361,22 +1386,25 @@
         if (!entriesByDate.has(e.date)) entriesByDate.set(e.date, []);
         entriesByDate.get(e.date).push(e);
       }
+      const sortedDates = Array.from(entriesByDate.keys()).sort();
       const timelineByDate = new Map();
-      for (const [dIso, list] of entriesByDate.entries()) {
-        const withPause = [];
-        let pauseInserted = false;
-        const hasBeforeOrAfterPause = list.some(x => x.period <= 3) || list.some(x => x.period >= 4);
-        for (const item of list) {
-          if (!pauseInserted && hasBeforeOrAfterPause && item.period >= 4) {
-            withPause.push({ kind: 'pause', date: dIso, period: 3.5, start: pauseStart, end: pauseEnd });
-            pauseInserted = true;
-          }
-          withPause.push(item);
+      for (const dIso of sortedDates) {
+        const list = entriesByDate.get(dIso) || [];
+        const hasSchool = list.some(x => x.kind === 'lesson' || x.kind === 'sub');
+        if (hasSchool) {
+          list.push({ kind: 'pause', date: dIso, period: 3.5, start: pauseStart, end: pauseEnd });
         }
-        if (!pauseInserted && list.some(x => x.period === 3)) {
-          withPause.push({ kind: 'pause', date: dIso, period: 3.5, start: pauseStart, end: pauseEnd });
-        }
-        timelineByDate.set(dIso, withPause);
+        list.sort((a, b) => {
+          const aAll = (a.kind === 'gcal' && a.allDay) ? 0 : 1;
+          const bAll = (b.kind === 'gcal' && b.allDay) ? 0 : 1;
+          if (aAll !== bAll) return aAll - bAll;
+          const aMin = parseHHMMToMin(a.start || (bell[String(a.period)]?.start || '')) ?? (480 + (a.period || 0) * 45);
+          const bMin = parseHHMMToMin(b.start || (bell[String(b.period)]?.start || '')) ?? (480 + (b.period || 0) * 45);
+          if (aMin !== bMin) return aMin - bMin;
+          const prio = { pause: 0, lesson: 1, sub: 2, gcal: 3 };
+          return (prio[a.kind] ?? 9) - (prio[b.kind] ?? 9);
+        });
+        timelineByDate.set(dIso, list);
       }
 
       const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -1410,6 +1438,33 @@
             const pct = Math.max(0, Math.min(100, ((nowMin - stMin) / Math.max(1, enMin - stMin)) * 100));
             inlineRedHtml = `<div class="now-red-overlay" style="top: ${pct.toFixed(1)}%;"><span class="now-red-badge">${esc(nowHHMM)}</span><div class="now-red-rule"></div></div>`;
             redLinePlaced = true;
+          }
+
+          if (entry.kind === 'gcal') {
+            if (entry.allDay) {
+              html += `
+              <div class="gcal-allday-item">
+                <span>📆 ${esc(entry.title)}</span>
+                <span class="gcal-allday-meta">${esc(entry.location || 'Ganztägig')}</span>
+              </div>`;
+              continue;
+            }
+            html += `
+            <div class="outlook-item is-gcal ${isNow ? 'is-now' : ''}">
+              <div class="out-time">
+                <div class="out-period">📆</div>
+                <div class="out-clock">${esc(stStr)}${enStr ? '<br>' + esc(enStr) : ''}</div>
+              </div>
+              <div class="out-body">
+                <div class="out-head-row">
+                  <div class="out-class">${esc(entry.calendar)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+                  ${entry.location ? `<div class="out-room">${esc(entry.location)}</div>` : ''}
+                </div>
+                <div class="out-topic">${esc(entry.title)}</div>
+              </div>
+              ${inlineRedHtml}
+            </div>`;
+            continue;
           }
 
           if (entry.kind === 'pause') {
@@ -1535,6 +1590,7 @@
       marksMap = jget(K_MARKS, {});
       notesMap = jget(K_NOTES, {});
       subsData = jget(K_SUBS, { items: [] });
+      calData = jget(K_GCAL, { items: [] });
       // URL-Parameter ?clientId=...&folder=... (z.B. aus QR-Code) automatisch übernehmen
       const sp = new URLSearchParams(window.location.search);
       if (sp.get('clientId')) {
