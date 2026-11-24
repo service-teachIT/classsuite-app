@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#2563EB" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <link rel="manifest" href="manifest.json" />
@@ -146,8 +146,34 @@
 
     .day-group-head { font-size: 13.5px; font-weight: 800; color: #1D4ED8; background: #EFF6FF; padding: 8px 12px; border-radius: 10px; margin: 14px 0 8px 0; }
     .outlook-item {
+      position: relative;
       background: #FFFFFF; border: 1px solid var(--border); border-radius: 12px;
       padding: 11px 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+    }
+    .pause-item {
+      position: relative;
+      background: #F1F5F9; border: 1px dashed #CBD5E1; border-radius: 9px;
+      padding: 5px 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; font-weight: 600; color: #64748B;
+    }
+    .pause-item.is-now {
+      background: #FEF2F2; border-color: #FCA5A5; color: #B91C1C;
+    }
+    .now-red-overlay {
+      position: absolute; left: -4px; right: -4px; transform: translateY(-50%);
+      display: flex; align-items: center; pointer-events: none; z-index: 8;
+    }
+    .now-red-gap {
+      display: flex; align-items: center; margin: 4px 0 8px 0; pointer-events: none;
+    }
+    .now-red-badge {
+      background: #DC2626; color: #FFFFFF; font-size: 10.5px; font-weight: 800;
+      padding: 1.5px 6px; border-radius: 999px; line-height: 1.2; flex-shrink: 0;
+      box-shadow: 0 1px 4px rgba(220, 38, 38, 0.35);
+    }
+    .now-red-rule {
+      flex: 1; height: 2px; background: #DC2626; border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(220, 38, 38, 0.25);
     }
     .outlook-item.is-now {
       background: #ECFDF5; border: 2px solid #10B981;
@@ -357,21 +383,21 @@
     </div>
   </div>
 
-  <div id="noteBackdrop" class="picker-backdrop" style="z-index: 140;" onclick="if(event.target===this) closeNoteModal()">
-    <div class="picker-modal" style="max-height: 70vh;" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
-      <div class="picker-head">
-        <div>
-          <div id="noteModalTitle" class="picker-title"></div>
+  <div id="noteBackdrop" class="picker-backdrop" style="z-index: 140; align-items: flex-start; padding-top: 10px;" onclick="if(event.target===this) closeNoteModal()">
+    <div class="picker-modal" style="max-height: calc(100% - 16px);" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
+      <div class="picker-head" style="padding: 10px 14px;">
+        <div style="min-width:0; flex:1;">
+          <div id="noteModalTitle" class="picker-title" style="font-size:15px;"></div>
           <div id="noteModalSub" class="picker-sub"></div>
         </div>
         <button class="picker-close" onclick="closeNoteModal()" title="Schließen">✕</button>
       </div>
-      <div style="padding: 14px;">
-        <textarea id="noteModalInput" class="note-input" style="min-height: 110px;" placeholder="Notiz zu dieser Stunde…"></textarea>
-        <div style="display:flex; gap:8px;">
-          <button class="primary-full" style="flex:1;" onclick="saveNoteModal()">💾 Notiz speichern</button>
+      <div style="padding: 10px 14px 12px 14px; overflow-y: auto;">
+        <div style="display:flex; gap:8px; margin-bottom: 8px;">
+          <button class="primary-full" style="flex:1; padding: 10px;" onclick="saveNoteModal()">💾 Notiz speichern</button>
           <button id="noteModalDeleteBtn" class="qa-btn danger" style="padding: 0 14px; display:none;" onclick="deleteNoteModal()" title="Notiz löschen">🗑</button>
         </div>
+        <textarea id="noteModalInput" class="note-input" style="min-height: 74px; max-height: 26vh; margin-bottom: 0;" placeholder="Notiz zu dieser Stunde…"></textarea>
       </div>
     </div>
   </div>
@@ -641,6 +667,7 @@
           updateStatusPill();
           render();
           if (pickerClassPath) renderTopicPickerList();
+          notifyNativeWidget();
           if (!silent) showToast('☁️ Mit OneDrive synchronisiert');
           return;
         }
@@ -709,9 +736,25 @@
       return '';
     }
 
+    function notifyNativeWidget() {
+      try {
+        if (window.AndroidWidgetBridge && typeof window.AndroidWidgetBridge.onStateUpdated === 'function') {
+          window.AndroidWidgetBridge.onStateUpdated(JSON.stringify({
+            snap,
+            marksMap,
+            notesMap,
+            subsData,
+            odCfg: getOdConfig(),
+            odToken: jget(K_OD_TOKEN, null),
+          }));
+        }
+      } catch {}
+    }
+
     async function pushMarksOrQueue(lanPayload = null) {
       jset(K_MARKS, marksMap);
       render();
+      notifyNativeWidget();
       try {
         const token = await getValidOneDriveToken();
         if (token) {
@@ -763,6 +806,7 @@
           updateStatusPill();
           render();
           if (pickerClassPath) renderTopicPickerList();
+          notifyNativeWidget();
           return;
         }
       } catch {
@@ -1309,72 +1353,135 @@
         return a.kind === b.kind ? 0 : (a.kind === 'lesson' ? -1 : 1);
       });
 
-      let html = '', lastDate = '';
-      for (const entry of mergedEntries) {
-        const bSlot = bell[String(entry.period)] || {};
-        const stMin = parseHHMMToMin(entry.start || bSlot.start);
-        const enMin = parseHHMMToMin(entry.end || bSlot.end);
-        const isNow = (entry.date === todayIso) && stMin !== null && enMin !== null && nowMin >= stMin && nowMin < enMin;
-
-        if (entry.date !== lastDate) {
-          const d = new Date(entry.date + 'T00:00:00');
-          html += `<div class="day-group-head">📅 ${esc(d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }))}</div>`;
-          lastDate = entry.date;
+      // Pause-Kästchen (10:15–10:40, zwischen 3. und 4. Stunde) pro Unterrichtstag einfügen
+      const pauseStart = bell['3']?.end || '10:15';
+      const pauseEnd = bell['4']?.start || '10:40';
+      const entriesByDate = new Map();
+      for (const e of mergedEntries) {
+        if (!entriesByDate.has(e.date)) entriesByDate.set(e.date, []);
+        entriesByDate.get(e.date).push(e);
+      }
+      const timelineByDate = new Map();
+      for (const [dIso, list] of entriesByDate.entries()) {
+        const withPause = [];
+        let pauseInserted = false;
+        const hasBeforeOrAfterPause = list.some(x => x.period <= 3) || list.some(x => x.period >= 4);
+        for (const item of list) {
+          if (!pauseInserted && hasBeforeOrAfterPause && item.period >= 4) {
+            withPause.push({ kind: 'pause', date: dIso, period: 3.5, start: pauseStart, end: pauseEnd });
+            pauseInserted = true;
+          }
+          withPause.push(item);
         }
+        if (!pauseInserted && list.some(x => x.period === 3)) {
+          withPause.push({ kind: 'pause', date: dIso, period: 3.5, start: pauseStart, end: pauseEnd });
+        }
+        timelineByDate.set(dIso, withPause);
+      }
 
-        if (entry.kind === 'sub') {
-          const s = entry.sub;
-          const role = String(s.role || '').toUpperCase();
-          const badgeTxt = role === 'VERTRETUNG' ? '🔄 VERTRETUNG' : (role === 'BETROFFEN' ? '⚠️ BETROFFEN' : 'ℹ️ HINWEIS');
-          const detailParts = [
-            s.subject || '',
-            (s.affected_teacher && role === 'VERTRETUNG') ? `(für ${s.affected_teacher})` : '',
-            s.note || '',
-          ].filter(Boolean);
-          const detailLine = detailParts.join(' · ') || badgeTxt;
+      const nowHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const redGapHtml = `<div class="now-red-gap"><span class="now-red-badge">${esc(nowHHMM)}</span><div class="now-red-rule"></div></div>`;
+
+      let html = '';
+      for (const [dIso, dayEntries] of timelineByDate.entries()) {
+        const d = new Date(dIso + 'T00:00:00');
+        html += `<div class="day-group-head">📅 ${esc(d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }))}</div>`;
+
+        const isTodayGroup = (dIso === todayIso);
+        let redLinePlaced = !isTodayGroup;
+
+        for (const entry of dayEntries) {
+          const bSlot = bell[String(entry.period)] || {};
+          const stStr = entry.start || bSlot.start || '';
+          const enStr = entry.end || bSlot.end || '';
+          const stMin = parseHHMMToMin(stStr);
+          const enMin = parseHHMMToMin(enStr);
+          const isNow = isTodayGroup && stMin !== null && enMin !== null && nowMin >= stMin && nowMin < enMin;
+
+          // Falls aktuelle Uhrzeit VOR diesem Block liegt -> roten Strich in die Lücke darüber setzen
+          if (!redLinePlaced && stMin !== null && nowMin < stMin) {
+            html += redGapHtml;
+            redLinePlaced = true;
+          }
+
+          // Falls aktuelle Uhrzeit IN diesem Block liegt -> exakte prozentuale Höhe berechnen
+          let inlineRedHtml = '';
+          if (!redLinePlaced && stMin !== null && enMin !== null && nowMin >= stMin && nowMin <= enMin) {
+            const pct = Math.max(0, Math.min(100, ((nowMin - stMin) / Math.max(1, enMin - stMin)) * 100));
+            inlineRedHtml = `<div class="now-red-overlay" style="top: ${pct.toFixed(1)}%;"><span class="now-red-badge">${esc(nowHHMM)}</span><div class="now-red-rule"></div></div>`;
+            redLinePlaced = true;
+          }
+
+          if (entry.kind === 'pause') {
+            html += `
+            <div class="pause-item ${isNow ? 'is-now' : ''}">
+              <span>☕ Pause</span>
+              <span>${esc(stStr)}–${esc(enStr)}</span>
+              ${inlineRedHtml}
+            </div>`;
+            continue;
+          }
+
+          if (entry.kind === 'sub') {
+            const s = entry.sub;
+            const role = String(s.role || '').toUpperCase();
+            const badgeTxt = role === 'VERTRETUNG' ? '🔄 VERTRETUNG' : (role === 'BETROFFEN' ? '⚠️ BETROFFEN' : 'ℹ️ HINWEIS');
+            const detailParts = [
+              s.subject || '',
+              (s.affected_teacher && role === 'VERTRETUNG') ? `(für ${s.affected_teacher})` : '',
+              s.note || '',
+            ].filter(Boolean);
+            const detailLine = detailParts.join(' · ') || badgeTxt;
+            html += `
+            <div class="outlook-item is-sub ${isNow ? 'is-now' : ''}">
+              <div class="out-time">
+                <div class="out-period">${entry.period ? esc(entry.period) + '. Std' : esc(s.hour_raw || '—')}</div>
+                <div class="out-clock">${esc(stStr)}</div>
+              </div>
+              <div class="out-body">
+                <div class="out-head-row">
+                  <div class="out-class"><span class="badge-sub">${badgeTxt}</span>${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+                  ${entry.room ? `<div class="out-room">${esc(entry.room)}</div>` : ''}
+                </div>
+                <div class="out-topic">${esc(detailLine)}</div>
+              </div>
+              ${inlineRedHtml}
+            </div>`;
+            continue;
+          }
+
+          const hasWarn = entry.betroffen && entry.betroffen.length > 0;
+          let roomDisp = entry.room;
+          let warnLine = '';
+          if (hasWarn) {
+            const b0 = entry.betroffen[0];
+            if (b0.room) roomDisp = b0.room;
+            const wp = [b0.note || '', b0.replacement_teacher ? `Vertr.: ${b0.replacement_teacher}` : ''].filter(Boolean);
+            warnLine = wp.join(' · ') || 'Änderung im Vertretungsplan';
+          }
+
           html += `
-          <div class="outlook-item is-sub ${isNow ? 'is-now' : ''}">
+          <div class="outlook-item ${hasWarn ? 'is-affected' : ''} ${isNow ? 'is-now' : ''}" onclick="openTopicPicker('${esc(entry.classRootPath)}')">
             <div class="out-time">
-              <div class="out-period">${entry.period ? esc(entry.period) + '. Std' : esc(s.hour_raw || '—')}</div>
-              <div class="out-clock">${esc(entry.start || '')}</div>
+              <div class="out-period">${esc(entry.period)}. Std</div>
+              <div class="out-clock">${esc(stStr)}</div>
             </div>
             <div class="out-body">
               <div class="out-head-row">
-                <div class="out-class"><span class="badge-sub">${badgeTxt}</span>${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
-                ${entry.room ? `<div class="out-room">${esc(entry.room)}</div>` : ''}
+                <div class="out-class">${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+                ${roomDisp ? `<div class="out-room">${esc(roomDisp)}</div>` : ''}
               </div>
-              <div class="out-topic">${esc(detailLine)}</div>
+              <div class="out-topic">${esc(entry.displayTopic)}</div>
+              ${warnLine ? `<div class="sub-warn-pill">⚠️ ${esc(warnLine)}</div>` : ''}
+              ${entry.note ? `<div class="topic-note">📝 ${esc(entry.note)}</div>` : ''}
             </div>
+            ${inlineRedHtml}
           </div>`;
-          continue;
         }
 
-        const hasWarn = entry.betroffen && entry.betroffen.length > 0;
-        let roomDisp = entry.room;
-        let warnLine = '';
-        if (hasWarn) {
-          const b0 = entry.betroffen[0];
-          if (b0.room) roomDisp = b0.room;
-          const wp = [b0.note || '', b0.replacement_teacher ? `Vertr.: ${b0.replacement_teacher}` : ''].filter(Boolean);
-          warnLine = wp.join(' · ') || 'Änderung im Vertretungsplan';
+        if (isTodayGroup && !redLinePlaced) {
+          html += redGapHtml;
         }
-
-        html += `
-        <div class="outlook-item ${hasWarn ? 'is-affected' : ''} ${isNow ? 'is-now' : ''}" onclick="openTopicPicker('${esc(entry.classRootPath)}')">
-          <div class="out-time">
-            <div class="out-period">${esc(entry.period)}. Std</div>
-            <div class="out-clock">${esc(entry.start || '')}</div>
-          </div>
-          <div class="out-body">
-            <div class="out-head-row">
-              <div class="out-class">${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
-              ${roomDisp ? `<div class="out-room">${esc(roomDisp)}</div>` : ''}
-            </div>
-            <div class="out-topic">${esc(entry.displayTopic)}</div>
-            ${warnLine ? `<div class="sub-warn-pill">⚠️ ${esc(warnLine)}</div>` : ''}
-            ${entry.note ? `<div class="topic-note">📝 ${esc(entry.note)}</div>` : ''}
-          </div>
-        </div>`;
       }
       root.innerHTML = html || `<div class="card" style="text-align:center; color:#64748B;">Keine anstehenden Stunden im Ausblick.</div>`;
     }
@@ -1436,7 +1543,18 @@
       }
       await handleOAuthCallbackIfPresent();
       render();
+      notifyNativeWidget();
       await syncNow(true);
+
+      // Dynamische Anpassung an Bildschirmtastatur (damit Buttons immer über der Tastatur bleiben)
+      if (window.visualViewport) {
+        const adjustForKeyboard = () => {
+          const nb = document.getElementById('noteBackdrop');
+          if (nb) nb.style.height = window.visualViewport.height + 'px';
+        };
+        window.visualViewport.addEventListener('resize', adjustForKeyboard);
+        window.visualViewport.addEventListener('scroll', adjustForKeyboard);
+      }
 
       // Nur beim Öffnen / Zurückkehren in die App synchronisieren (kein Hintergrund-Intervall)
       let lastOpenSync = Date.now();
@@ -1446,6 +1564,10 @@
           syncNow(true);
         }
       });
+      // Lokale Uhrzeit-Linie im Ausblick jede Minute nachziehen (0 Netzwerk-Traffic!)
+      setInterval(() => {
+        if (document.visibilityState === 'visible' && currentTab === 'outlook' && snap) render();
+      }, 60000);
     })();
   </script>
 </body>
