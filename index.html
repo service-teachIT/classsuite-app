@@ -155,6 +155,23 @@
     }
     .outlook-item.is-now .out-time { background: #D1FAE5; color: #065F46; }
     .outlook-item.is-now .out-clock { color: #047857; font-weight: 600; }
+    .outlook-item.is-sub {
+      background: #FFFBEB; border: 1.5px solid #F59E0B;
+    }
+    .outlook-item.is-sub .out-time { background: #FEF3C7; color: #92400E; }
+    .outlook-item.is-sub .out-class { color: #B45309; }
+    .outlook-item.is-affected {
+      background: #FEF2F2; border-color: #FCA5A5;
+    }
+    .badge-sub {
+      display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 7px;
+      border-radius: 999px; background: #F59E0B; color: #FFFFFF; margin-right: 6px;
+      vertical-align: middle; letter-spacing: 0.2px;
+    }
+    .sub-warn-pill {
+      font-size: 12px; font-weight: 700; color: #991B1B; background: #FEE2E2;
+      padding: 3px 7px; border-radius: 6px; margin-top: 4px; display: inline-block;
+    }
     .badge-live {
       display: inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 7px;
       border-radius: 999px; background: #10B981; color: #FFFFFF; margin-left: 6px;
@@ -371,6 +388,7 @@
     const K_SNAP     = 'cs_mobile_snap_v2';     // mobile_data.json
     const K_MARKS    = 'cs_mobile_marks_v2';    // folder_marks.json
     const K_NOTES    = 'cs_mobile_notes_v2';    // folder_notes.json
+    const K_SUBS     = 'cs_mobile_subs_v1';     // substitutions.json (Infoportal)
     const K_DIRTY    = 'cs_mobile_dirty_v2';    // { marks: bool, notes: bool }
 
     const DEFAULT_OD_FOLDER = '001 Organisation/Programme und Code/ClassPrint_display_gui_daten';
@@ -378,6 +396,7 @@
     let snap = null;
     let marksMap = {};
     let notesMap = {};
+    let subsData = { items: [] };
     let currentTab = 'outlook';
     let selectedClassPath = null;
     let searchQuery = '';
@@ -545,14 +564,35 @@
       return nt.access_token;
     }
 
-    function oneDriveFileUrl(filename) {
+    function oneDriveItemBaseUrl(filename) {
       const folder = getOdConfig().folderPath.replace(/^\/+|\/+$/g, '');
       const encoded = folder.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(filename);
-      return `https://graph.microsoft.com/v1.0/me/drive/root:/${encoded}:/content`;
+      return `https://graph.microsoft.com/v1.0/me/drive/root:/${encoded}`;
+    }
+
+    function oneDriveFileUrl(filename) {
+      return `${oneDriveItemBaseUrl(filename)}:/content`;
     }
 
     async function odReadJson(token, filename, fallback = null) {
-      const resp = await fetch(oneDriveFileUrl(filename), {
+      // Über frische Graph downloadUrl mit Cache-Buster laden -> garantiert niemals veralteten Chrome-Cache!
+      try {
+        const metaResp = await fetch(`${oneDriveItemBaseUrl(filename)}?select=@microsoft.graph.downloadUrl&_=${Date.now()}`, {
+          headers: { Authorization: 'Bearer ' + token },
+          cache: 'no-store',
+        });
+        if (metaResp.status === 404) return fallback;
+        if (metaResp.ok) {
+          const meta = await metaResp.json();
+          const dlUrl = meta['@microsoft.graph.downloadUrl'];
+          if (dlUrl) {
+            const fileResp = await fetch(dlUrl, { cache: 'no-store' });
+            if (fileResp.ok) return fileResp.json();
+          }
+        }
+      } catch {}
+
+      const resp = await fetch(`${oneDriveFileUrl(filename)}?_=${Date.now()}`, {
         headers: { Authorization: 'Bearer ' + token },
         cache: 'no-store',
       });
@@ -586,14 +626,16 @@
           if (dirty.notes) await odWriteJson(token, 'folder_notes.json', notesMap);
           if (dirty.marks || dirty.notes) setDirty({ marks: false, notes: false });
 
-          const [newSnap, newMarks, newNotes] = await Promise.all([
+          const [newSnap, newMarks, newNotes, newSubs] = await Promise.all([
             odReadJson(token, 'mobile_data.json', null),
             odReadJson(token, 'folder_marks.json', {}),
             odReadJson(token, 'folder_notes.json', {}),
+            odReadJson(token, 'substitutions.json', { items: [] }),
           ]);
           if (newSnap) { snap = newSnap; jset(K_SNAP, snap); }
           if (newMarks) { marksMap = newMarks; jset(K_MARKS, marksMap); }
           if (newNotes) { notesMap = newNotes; jset(K_NOTES, notesMap); }
+          if (newSubs && Array.isArray(newSubs.items)) { subsData = newSubs; jset(K_SUBS, subsData); }
 
           syncMode = 'onedrive';
           updateStatusPill();
@@ -1164,7 +1206,8 @@
 
     function renderOutlook(root) {
       const items = snap.outlook || [];
-      if (!items.length) {
+      const rawSubs = (subsData && Array.isArray(subsData.items)) ? subsData.items : [];
+      if (!items.length && !rawSubs.length) {
         root.innerHTML = `<div class="card" style="text-align:center; color:#64748B;">Keine anstehenden Stunden im Ausblick.</div>`;
         return;
       }
@@ -1181,7 +1224,24 @@
       const nowMin = now.getHours() * 60 + now.getMinutes();
       const bell = snap?.bell_schedule || {};
 
-      let html = '', lastDate = '';
+      // Vertretungsstunden nach Slot zuordnen (BETROFFEN an bestehende Stunde heften, VERTRETUNG/HINWEIS direkt einfügen)
+      const existingSlots = new Set(items.map(it => `${it.date}|${Number(it.period || 0)}`));
+      const betroffenBySlot = new Map();
+      const extraSubs = [];
+      for (const s of rawSubs) {
+        if (!s || !s.date || s.date < todayIso) continue;
+        const slotKey = `${s.date}|${Number(s.period || 0)}`;
+        const role = String(s.role || '').toUpperCase();
+        if (role === 'BETROFFEN' && existingSlots.has(slotKey)) {
+          if (!betroffenBySlot.has(slotKey)) betroffenBySlot.set(slotKey, []);
+          betroffenBySlot.get(slotKey).push(s);
+        } else {
+          extraSubs.push(s);
+        }
+      }
+
+      // Reguläre Stunden aufbereiten
+      const mergedEntries = [];
       for (const it of items) {
         const cls = classByPath.get(normKey(it.class_root_path))
           || classByName.get(String(it.class || '').trim().toLowerCase())
@@ -1190,7 +1250,6 @@
         let topicFullPath = it.topic_full_path || '';
         let classRootPath = cls ? cls.path : (it.class_root_path || '');
         let displayTopic = it.display_topic || it.topic_folder || '';
-        let topicColorCls = '';
         let note = '';
 
         if (cls && cls.topics && cls.topics.length) {
@@ -1208,33 +1267,112 @@
           } else {
             displayTopic = topic.name;
           }
-          topicColorCls = computeColorClass(topic);
           note = getTopicNote(topic.full_path);
         }
 
-        const bSlot = bell[String(it.period)] || {};
-        const stMin = parseHHMMToMin(it.start || bSlot.start);
-        const enMin = parseHHMMToMin(it.end || bSlot.end);
-        const isNow = (it.date === todayIso) && stMin !== null && enMin !== null && nowMin >= stMin && nowMin < enMin;
+        const slotKey = `${it.date}|${Number(it.period || 0)}`;
+        mergedEntries.push({
+          kind: 'lesson',
+          date: it.date,
+          period: Number(it.period || 0),
+          start: it.start || '',
+          end: it.end || '',
+          clsName: it.class || '',
+          room: it.room || '',
+          displayTopic,
+          note,
+          classRootPath,
+          topicFullPath,
+          betroffen: betroffenBySlot.get(slotKey) || [],
+        });
+      }
 
-        if (it.date !== lastDate) {
-          const d = new Date(it.date + 'T00:00:00');
+      // Vertretungsstunden an der exakt richtigen Stelle einfügen
+      for (const s of extraSubs) {
+        const p = Number(s.period || 0);
+        const bSlot = bell[String(p)] || {};
+        mergedEntries.push({
+          kind: 'sub',
+          date: s.date,
+          period: p,
+          start: s.start || bSlot.start || '',
+          end: s.end || bSlot.end || '',
+          clsName: s.classes || '',
+          room: s.room || '',
+          sub: s,
+        });
+      }
+
+      mergedEntries.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        if (a.period !== b.period) return a.period - b.period;
+        return a.kind === b.kind ? 0 : (a.kind === 'lesson' ? -1 : 1);
+      });
+
+      let html = '', lastDate = '';
+      for (const entry of mergedEntries) {
+        const bSlot = bell[String(entry.period)] || {};
+        const stMin = parseHHMMToMin(entry.start || bSlot.start);
+        const enMin = parseHHMMToMin(entry.end || bSlot.end);
+        const isNow = (entry.date === todayIso) && stMin !== null && enMin !== null && nowMin >= stMin && nowMin < enMin;
+
+        if (entry.date !== lastDate) {
+          const d = new Date(entry.date + 'T00:00:00');
           html += `<div class="day-group-head">📅 ${esc(d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }))}</div>`;
-          lastDate = it.date;
+          lastDate = entry.date;
         }
+
+        if (entry.kind === 'sub') {
+          const s = entry.sub;
+          const role = String(s.role || '').toUpperCase();
+          const badgeTxt = role === 'VERTRETUNG' ? '🔄 VERTRETUNG' : (role === 'BETROFFEN' ? '⚠️ BETROFFEN' : 'ℹ️ HINWEIS');
+          const detailParts = [
+            s.subject || '',
+            (s.affected_teacher && role === 'VERTRETUNG') ? `(für ${s.affected_teacher})` : '',
+            s.note || '',
+          ].filter(Boolean);
+          const detailLine = detailParts.join(' · ') || badgeTxt;
+          html += `
+          <div class="outlook-item is-sub ${isNow ? 'is-now' : ''}">
+            <div class="out-time">
+              <div class="out-period">${entry.period ? esc(entry.period) + '. Std' : esc(s.hour_raw || '—')}</div>
+              <div class="out-clock">${esc(entry.start || '')}</div>
+            </div>
+            <div class="out-body">
+              <div class="out-head-row">
+                <div class="out-class"><span class="badge-sub">${badgeTxt}</span>${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+                ${entry.room ? `<div class="out-room">${esc(entry.room)}</div>` : ''}
+              </div>
+              <div class="out-topic">${esc(detailLine)}</div>
+            </div>
+          </div>`;
+          continue;
+        }
+
+        const hasWarn = entry.betroffen && entry.betroffen.length > 0;
+        let roomDisp = entry.room;
+        let warnLine = '';
+        if (hasWarn) {
+          const b0 = entry.betroffen[0];
+          if (b0.room) roomDisp = b0.room;
+          const wp = [b0.note || '', b0.replacement_teacher ? `Vertr.: ${b0.replacement_teacher}` : ''].filter(Boolean);
+          warnLine = wp.join(' · ') || 'Änderung im Vertretungsplan';
+        }
+
         html += `
-        <div class="outlook-item ${isNow ? 'is-now' : ''}" onclick="openTopicPicker('${esc(classRootPath)}')">
+        <div class="outlook-item ${hasWarn ? 'is-affected' : ''} ${isNow ? 'is-now' : ''}" onclick="openTopicPicker('${esc(entry.classRootPath)}')">
           <div class="out-time">
-            <div class="out-period">${esc(it.period)}. Std</div>
-            <div class="out-clock">${esc(it.start || '')}</div>
+            <div class="out-period">${esc(entry.period)}. Std</div>
+            <div class="out-clock">${esc(entry.start || '')}</div>
           </div>
           <div class="out-body">
             <div class="out-head-row">
-              <div class="out-class">${esc(it.class)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
-              ${it.room ? `<div class="out-room">${esc(it.room)}</div>` : ''}
+              <div class="out-class">${esc(entry.clsName)}${isNow ? '<span class="badge-live">JETZT</span>' : ''}</div>
+              ${roomDisp ? `<div class="out-room">${esc(roomDisp)}</div>` : ''}
             </div>
-            <div class="out-topic">${esc(displayTopic)}</div>
-            ${note ? `<div class="topic-note">📝 ${esc(note)}</div>` : ''}
+            <div class="out-topic">${esc(entry.displayTopic)}</div>
+            ${warnLine ? `<div class="sub-warn-pill">⚠️ ${esc(warnLine)}</div>` : ''}
+            ${entry.note ? `<div class="topic-note">📝 ${esc(entry.note)}</div>` : ''}
           </div>
         </div>`;
       }
@@ -1289,6 +1427,7 @@
       snap = jget(K_SNAP, null);
       marksMap = jget(K_MARKS, {});
       notesMap = jget(K_NOTES, {});
+      subsData = jget(K_SUBS, { items: [] });
       // URL-Parameter ?clientId=...&folder=... (z.B. aus QR-Code) automatisch übernehmen
       const sp = new URLSearchParams(window.location.search);
       if (sp.get('clientId')) {
